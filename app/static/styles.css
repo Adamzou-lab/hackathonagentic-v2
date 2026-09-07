@@ -979,10 +979,17 @@ label {
   color: var(--texte-2);
 }
 
+.etat-infos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 10px;
+}
+
 .derniere-action {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
   padding: 12px 14px;
   border-radius: var(--rayon-s);
   background: var(--surface-2);
@@ -1005,7 +1012,7 @@ label {
 
 .etat-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
   gap: 10px;
 }
 
@@ -1247,7 +1254,7 @@ label {
 .source-icone[data-statut="ok"] { background: var(--succes-fond); color: var(--succes); }
 .source-icone[data-statut="en_cours"] { background: var(--accent-fond); color: var(--accent); }
 .source-icone[data-statut="en_cours"] .icone { animation: rotation 1s linear infinite; }
-.source-icone[data-statut="abandon"] { background: var(--danger-fond); color: var(--danger); }
+.source-icone[data-statut="echec"] { background: var(--danger-fond); color: var(--danger); }
 
 .source-texte {
   flex: 1;
@@ -1286,7 +1293,7 @@ label {
 
 .source-statut[data-statut="ok"] { background: var(--succes-fond); color: var(--succes); }
 .source-statut[data-statut="en_cours"] { background: var(--accent-fond); color: var(--accent); }
-.source-statut[data-statut="abandon"] { background: var(--danger-fond); color: var(--danger); }
+.source-statut[data-statut="echec"] { background: var(--danger-fond); color: var(--danger); }
 
 .source-statut.statut-maj {
   animation: eclat-statut 0.5s ease;
@@ -1350,6 +1357,27 @@ label {
   border-radius: 0 8px 8px 0;
   background: var(--accent-fond);
   font-size: 0.85rem;
+}
+
+.constat-preuve {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--bordure-forte);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface-2);
+}
+
+.constat-extrait {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--texte-2);
+}
+
+.constat-reserves {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--attention);
 }
 
 .constat-pied {
@@ -1558,9 +1586,9 @@ label {
 .journal-liste li[data-type="recherche"] .journal-point { background: var(--accent); }
 .journal-liste li[data-type="lecture"] .journal-point { background: var(--succes); }
 .journal-liste li[data-type="constat"] .journal-point { background: var(--accent-2); }
-.journal-liste li[data-type="abandon"] .journal-point,
 .journal-liste li[data-type="erreur"] .journal-point { background: var(--danger); }
 .journal-liste li[data-type="etat"] .journal-point { background: var(--attention); }
+.journal-liste li[data-type="interne"] { opacity: 0.75; }
 
 .journal-heure {
   padding-top: 2px;
@@ -1594,8 +1622,9 @@ label {
 .journal-liste[data-filtre="recherche"] li:not([data-type="recherche"]),
 .journal-liste[data-filtre="lecture"] li:not([data-type="lecture"]),
 .journal-liste[data-filtre="constat"] li:not([data-type="constat"]),
-.journal-liste[data-filtre="abandon"] li:not([data-type="abandon"]):not([data-type="erreur"]),
-.journal-liste[data-filtre="etat"] li:not([data-type="etat"]) {
+.journal-liste[data-filtre="erreur"] li:not([data-type="erreur"]),
+.journal-liste[data-filtre="etat"] li:not([data-type="etat"]),
+.journal-liste[data-filtre="interne"] li:not([data-type="interne"]) {
   display: none;
 }
 
@@ -1661,6 +1690,12 @@ label {
 @media (max-width: 860px) {
   .tableau-bord,
   .colonnes {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .etat-infos {
     grid-template-columns: 1fr;
   }
 }

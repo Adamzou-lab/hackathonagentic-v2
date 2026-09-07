@@ -1,42 +1,31 @@
 "use strict";
 
 /**
- * Contrat API assumé pour ce socle, en attendant API.md fourni par Codex.
- * À aligner avec Adam dès que le contrat réel est publié — seul l'objet
- * `apiReel` ci-dessous devrait avoir besoin de changer.
+ * Interface Lockin. Contrat serveur : voir API.md (backend FastAPI d'Adam).
  *
- *   POST /api/missions
- *     body:  { sujet, domaines: string[], budget_max, duree_max_minutes }
- *     resp:  Mission
+ *   POST /api/missions            { subject, domains[], action_budget, duration_minutes } → 202, instantané
+ *   GET  /api/missions/:id        instantané
+ *   POST /api/missions/:id/stop   arrêt idempotent, instantané
  *
- *   GET /api/missions/:id
- *     resp:  Mission
+ * Toutes les routes /api/ exigent `Authorization: Bearer <LOCKIN_ACCESS_TOKEN>`.
+ * Le jeton opérateur est saisi dans le formulaire et gardé en mémoire de la
+ * page uniquement — jamais dans l'URL, ni dans le stockage du navigateur.
  *
- *   POST /api/missions/:id/arret
- *     resp:  Mission
- *
- *   Mission = {
- *     id, statut,               // pending | running | stopping | stopped
- *                                // | completed | budget_exhausted
- *                                // | deadline_reached | failed
- *     sujet, domaines: string[],
- *     budget: { restant, max },
- *     temps:  { ecoule_s, max_s },
- *     sources:  [{ url, statut: "ok" | "en_cours" | "abandon", tentatives? }],
- *     constats: [{ id, titre, resume, sources: string[],
- *                  interet_developpeur?, confiance?, date_evenement?, statut_date? }],
- *     journal:  [{ ts, message, type?, budget_restant? }],
- *     erreur:   { code, message } | null
- *   }
- *
- * Les champs marqués `?` sont facultatifs : l'interface les affiche s'ils
- * sont présents et s'en passe sinon.
+ * L'instantané serveur (anglais) est converti par `adapterMission` vers la
+ * forme interne (français) utilisée par tout le rendu. Le simulateur du mode
+ * démo produit directement cette forme interne.
  */
 
 const MODE_DEMO = new URLSearchParams(location.search).has("demo");
 const INTERVALLE_RAFRAICHISSEMENT_MS = 1000;
 const MAX_DOMAINES = 5;
-const MOTIF_DOMAINE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+const MAX_SUJET = 500;
+const MAX_BUDGET = 100;
+const MAX_DUREE = 30;
+const LONGUEUR_MIN_JETON = 32;
+const MOTIF_DOMAINE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+let jetonMemoire = "";
 
 const LIBELLES_ETAT = {
   pending: "En attente",
@@ -63,6 +52,14 @@ const DESCRIPTIONS_ETAT = {
 const ETATS_TERMINAUX = new Set(["stopped", "completed", "budget_exhausted", "deadline_reached", "failed"]);
 const ETATS_ACTIFS = new Set(["pending", "running", "stopping"]);
 
+const LIBELLES_ACTION = {
+  search_web: "recherche web",
+  read_page: "lecture d'une page",
+  save_finding: "sauvegarde d'un constat",
+};
+
+const TYPE_PAR_OUTIL = { search_web: "recherche", read_page: "lecture", save_finding: "constat" };
+
 const LIBELLES_CONFIANCE = {
   single_source: ["Source unique", "neutre"],
   corroborated: ["Corroboré", "succes"],
@@ -75,36 +72,226 @@ const LIBELLES_STATUT_DATE = {
   unknown: "date inconnue",
 };
 
+const LIBELLES_ERREUR = {
+  invalid_input: "paramètres invalides",
+  blocked_url: "URL refusée (hors domaines autorisés ou adresse privée)",
+  timeout: "délai dépassé",
+  unavailable: "page injoignable",
+  rate_limited: "débit limité par le site",
+  too_large: "page trop volumineuse",
+  unsupported_content: "contenu non pris en charge",
+  invalid_evidence: "citation introuvable dans la page",
+  idempotency_conflict: "conflit d'idempotence",
+  storage_failure: "échec d'écriture du journal",
+  cancelled: "annulé",
+  budget_exhausted: "budget épuisé",
+  attempts_exhausted: "deux tentatives déjà faites sur cette URL",
+  unknown_tool: "outil inconnu",
+  invalid_finish: "fin de mission invalide",
+  web_search_unavailable: "recherche web indisponible sur le compte",
+  execution_error: "erreur d'exécution",
+};
+
+function libelleErreur(code) {
+  if (!code) return "";
+  if (String(code).startsWith("anthropic_http_")) return `erreur fournisseur (HTTP ${String(code).slice(15)})`;
+  return LIBELLES_ERREUR[code] || String(code);
+}
+
+const MESSAGES_HTTP = {
+  401: "Jeton opérateur incorrect.",
+  403: "Accès refusé.",
+  404: "Mission introuvable.",
+  409: "Une mission est déjà en cours sur ce serveur : une seule à la fois.",
+  503: "Configuration serveur incomplète : clé Anthropic ou jeton opérateur manquant.",
+};
+
 // ---------- API réelle ----------
 
+function messageErreurHttp(statut, donnees) {
+  if (MESSAGES_HTTP[statut]) return MESSAGES_HTTP[statut];
+  const detail = donnees && donnees.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((d) => String(d.msg || "").replace(/^Value error, /, "")).filter(Boolean);
+    if (messages.length) return messages.join(" ");
+  }
+  return `Le serveur a répondu ${statut}.`;
+}
+
+async function requete(chemin, methode = "GET", corps) {
+  const entetes = { Authorization: `Bearer ${jetonMemoire}` };
+  if (corps !== undefined) entetes["Content-Type"] = "application/json";
+  const reponse = await fetch(chemin, {
+    method: methode,
+    headers: entetes,
+    body: corps === undefined ? undefined : JSON.stringify(corps),
+  });
+  const donnees = await reponse.json().catch(() => ({}));
+  if (!reponse.ok) throw new Error(messageErreurHttp(reponse.status, donnees));
+  return adapterMission(donnees);
+}
+
+function heureDe(iso) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? String(iso || "") : date.toTimeString().slice(0, 8);
+}
+
+// Traduit un événement du journal serveur (kind + data) en une ligne lisible.
+function decrireEvenement(evenement, budgetMax) {
+  const kind = evenement.kind;
+  const data = evenement.data || {};
+  const outil = LIBELLES_ACTION[data.tool] || data.tool || "";
+  let type = "interne";
+  let message = "";
+  let budgetRestant = null;
+  const resteApres = (actionsUtilisees) =>
+    typeof actionsUtilisees === "number" && budgetMax ? Math.max(0, budgetMax - actionsUtilisees) : null;
+
+  switch (kind) {
+    case "created": {
+      const r = data.request || {};
+      type = "etat";
+      message = `Mission créée : « ${r.subject ?? ""} », ${(r.domains || []).length} domaine(s), budget ${r.action_budget ?? "?"}, durée ${r.duration_minutes ?? "?"} min`;
+      break;
+    }
+    case "started":
+      type = "etat";
+      message = "Démarrage de l'agent";
+      break;
+    case "stop_requested":
+      type = "etat";
+      message = "Arrêt demandé par l'opérateur : plus aucune nouvelle action";
+      break;
+    case "finished":
+      type = "etat";
+      message = `Fin de mission : ${LIBELLES_ETAT[data.status] || data.status}${data.error ? ` — ${libelleErreur(data.error)}` : ""}`;
+      budgetRestant = resteApres(data.actions_used);
+      break;
+    case "action_reserved":
+      message = `Action ${data.actions_used}/${budgetMax ?? "?"} réservée sur le budget`;
+      budgetRestant = resteApres(data.actions_used);
+      break;
+    case "action_started": {
+      type = TYPE_PAR_OUTIL[data.tool] || "interne";
+      const p = data.parameters || {};
+      let detail = "";
+      if (data.tool === "search_web") detail = `« ${p.query ?? ""} » (k=${p.k ?? "?"})`;
+      else if (data.tool === "read_page") detail = p.url ?? "";
+      else if (data.tool === "save_finding") detail = `« ${(p.finding && p.finding.title) ?? ""} »`;
+      else if (p.validation) detail = `(${libelleErreur(p.validation)})`;
+      message = `Action n°${data.action_number ?? "?"} : ${outil} ${detail}`.trim();
+      break;
+    }
+    case "action_finished": {
+      type = TYPE_PAR_OUTIL[data.tool] || "interne";
+      const r = data.result || {};
+      if (r.error) message = `${outil} terminée en échec : ${libelleErreur(r.error)}`;
+      else if (data.tool === "read_page") message = `Page lue : ${r.title || r.final_url || r.requested_url || ""}`;
+      else if (data.tool === "search_web") {
+        const n = Array.isArray(r) ? r.length : Array.isArray(r.results) ? r.results.length : null;
+        message = n === null ? "Recherche terminée" : `Recherche terminée : ${n} résultat(s)`;
+      } else if (data.tool === "save_finding") message = `Constat ${r.disposition === "already_saved" ? "déjà connu" : "enregistré"}`;
+      else message = `${outil} terminée`;
+      break;
+    }
+    case "page_attempt":
+      type = "lecture";
+      message = `Tentative ${data.attempt}/2 : ${data.url}`;
+      break;
+    case "page_saved":
+      type = "lecture";
+      message = `Page conservée : ${data.url}`;
+      break;
+    case "finding_saved":
+      type = "constat";
+      message = `Constat ${data.disposition === "already_saved" ? "déjà connu (déduplication)" : "nouveau"}${data.finding_id ? ` #${String(data.finding_id).slice(0, 8)}` : ""}`;
+      break;
+    case "tool_error":
+      type = "erreur";
+      message = `Erreur ${outil || ""} : ${libelleErreur(data.code)}`.replace("  ", " ");
+      break;
+    case "model_started":
+      message = `Appel au modèle n°${data.model_calls_used}`;
+      break;
+    case "model_finished": {
+      const u = data.usage || {};
+      const jetons = u.input_tokens != null ? ` (${u.input_tokens} → ${u.output_tokens ?? "?"} jetons)` : "";
+      const proposition = data.proposed_action ? ` : propose ${LIBELLES_ACTION[data.proposed_action] || data.proposed_action}` : "";
+      message = `Réponse du modèle${proposition}${jetons}`;
+      break;
+    }
+    case "network_started":
+      message = `Requête réseau n°${data.network_requests_used}`;
+      break;
+    default:
+      message = `${kind}${Object.keys(data).length ? ` ${JSON.stringify(data)}` : ""}`;
+  }
+
+  return { seq: evenement.seq, ts: heureDe(evenement.at), type, message, budget_restant: budgetRestant };
+}
+
+function adapterMission(m) {
+  const urlParSource = new Map((m.sources || []).filter((s) => s.source_id).map((s) => [s.source_id, s.url]));
+  return {
+    id: m.id,
+    statut: m.status,
+    sujet: m.subject,
+    domaines: m.domains || [],
+    budget: { restant: m.actions_remaining ?? 0, max: m.action_budget ?? 0 },
+    temps: { ecoule_s: m.elapsed_seconds ?? 0, max_s: m.duration_seconds ?? 0 },
+    action_en_cours: m.current_action || null,
+    appels_modele: m.model_calls_used ?? 0,
+    requetes_reseau: m.network_requests_used ?? 0,
+    sources: (m.sources || []).map((s) => ({
+      url: s.url,
+      titre: s.title || "",
+      statut: s.status === "ok" ? "ok" : "echec",
+      erreur: s.error || null,
+    })),
+    constats: (m.findings || []).map((f) => ({
+      id: f.finding_id,
+      titre: f.title,
+      resume: f.summary,
+      interet_developpeur: f.developer_impact,
+      preuves: (f.evidence || []).map((e) => ({
+        url: urlParSource.get(e.source_id) || null,
+        source_id: e.source_id,
+        extrait: e.quote || "",
+      })),
+      date_evenement: f.event_date || null,
+      statut_date: f.date_status,
+      confiance: f.confidence,
+      reserves: f.caveats || [],
+    })),
+    journal: (m.events || []).map((e) => decrireEvenement(e, m.action_budget)),
+    synthese: (m.summary && m.summary.text) || "",
+    partielle: m.summary ? Boolean(m.summary.partial) : null,
+    erreur: m.error ? { message: libelleErreur(m.error) } : null,
+  };
+}
+
 const apiReel = {
-  async creerMission(payload) {
-    const reponse = await fetch("/api/missions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  creerMission(valeurs) {
+    return requete("/api/missions", "POST", {
+      subject: valeurs.sujet,
+      domains: valeurs.domaines,
+      action_budget: valeurs.budget,
+      duration_minutes: valeurs.duree,
     });
-    if (!reponse.ok) throw new Error("echec_creation");
-    return reponse.json();
   },
-
-  async obtenirMission(id) {
-    const reponse = await fetch(`/api/missions/${encodeURIComponent(id)}`);
-    if (!reponse.ok) throw new Error("echec_lecture");
-    return reponse.json();
+  obtenirMission(id) {
+    return requete(`/api/missions/${encodeURIComponent(id)}`);
   },
-
-  async arreterMission(id) {
-    const reponse = await fetch(`/api/missions/${encodeURIComponent(id)}/arret`, { method: "POST" });
-    if (!reponse.ok) throw new Error("echec_arret");
-    return reponse.json();
+  arreterMission(id) {
+    return requete(`/api/missions/${encodeURIComponent(id)}/stop`, "POST");
   },
 };
 
 // ---------- Simulateur (mode démo, `?demo` dans l'URL) ----------
 // Données simulées dans le navigateur, sans aucun appel réseau. Sert à
-// regarder l'interface avant que le backend existe. Jamais actif par défaut,
-// et un bandeau l'annonce à l'écran : ce n'est pas une démonstration.
+// regarder l'interface sans backend. Jamais actif par défaut, et un bandeau
+// l'annonce à l'écran : ce n'est pas une démonstration.
 
 function creerSimulateur() {
   const CHEMINS = ["/blog/nouveautes-agents", "/docs/changelog", "/releases", "/annonces/septembre", "/guide/outils", "/notes-de-version"];
@@ -126,6 +313,12 @@ function creerSimulateur() {
     "À prendre en compte pour calibrer le budget.",
     "Facilite la reconstruction d'état après un arrêt.",
   ];
+  const EXTRAITS = [
+    "les missions longues acceptent désormais un budget d'actions explicite",
+    "chaque outil déclare une signature typée et son effet de bord",
+    "une limite par domaine et un délai de quinze secondes par appel",
+    "le journal complet peut être exporté au format JSON",
+  ];
 
   let mission = null;
   let phase = "recherche";
@@ -134,14 +327,20 @@ function creerSimulateur() {
   let okDepuisConstat = 0;
   let ticksArret = 0;
   const urlsEnEchec = new Set();
+  const tentatives = new Map();
 
   const heure = () => new Date().toTimeString().slice(0, 8);
-  const hote = (url) => new URL(url).hostname;
-  const copie = () => JSON.parse(JSON.stringify(mission));
   const attendre = () => new Promise((resoudre) => setTimeout(resoudre, 120));
 
+  function copie() {
+    const c = JSON.parse(JSON.stringify(mission));
+    c.partielle = mission.statut !== "completed" || mission.sources.some((s) => s.statut === "echec");
+    c.synthese = mission.constats.length ? "" : "Aucun résultat exploitable pour le moment.";
+    return c;
+  }
+
   function journaliser(type, message) {
-    mission.journal.push({ ts: heure(), type, message, budget_restant: mission.budget.restant });
+    mission.journal.push({ seq: mission.journal.length + 1, ts: heure(), type, message, budget_restant: mission.budget.restant });
   }
 
   function consommer() {
@@ -151,21 +350,27 @@ function creerSimulateur() {
   function terminerSiLimiteAtteinte() {
     if (mission.budget.restant <= 0) {
       mission.statut = "budget_exhausted";
-      journaliser("etat", "BUDGET_EXHAUSTED plus aucune tentative disponible");
+      mission.action_en_cours = null;
+      journaliser("etat", "Fin de mission : budget épuisé");
       return true;
     }
     if (mission.temps.ecoule_s >= mission.temps.max_s) {
       mission.statut = "deadline_reached";
-      journaliser("etat", `DEADLINE_REACHED échéance de ${mission.temps.max_s / 60} min atteinte`);
+      mission.action_en_cours = null;
+      journaliser("etat", `Fin de mission : échéance de ${mission.temps.max_s / 60} min atteinte`);
       return true;
     }
     return false;
   }
 
   function etape() {
+    mission.appels_modele += 1;
     if (phase === "recherche") {
+      mission.action_en_cours = "search_web";
+      mission.requetes_reseau += 1;
       consommer();
-      journaliser("recherche", `SEARCH "${mission.sujet}" k=5 → 5 résultats`);
+      journaliser("recherche", `Action : recherche web « ${mission.sujet} » (k=5) → 5 résultats`);
+      mission.action_en_cours = null;
       phase = "ouvrir";
       return;
     }
@@ -174,46 +379,60 @@ function creerSimulateur() {
       const url = `https://${domaine}${CHEMINS[compteur % CHEMINS.length]}`;
       compteur += 1;
       if (compteur % 4 === 3) urlsEnEchec.add(url);
-      source = { url, statut: "en_cours", tentatives: 1 };
+      source = { url, titre: "", statut: "en_cours", erreur: null };
       mission.sources.push(source);
+      mission.action_en_cours = "read_page";
+      mission.requetes_reseau += 1;
       consommer();
-      journaliser("lecture", `FETCH ${url} → en cours`);
+      tentatives.set(url, 1);
+      journaliser("lecture", `Tentative 1/2 : ${url}`);
       phase = "resoudre";
       return;
     }
     if (phase === "resoudre") {
       if (urlsEnEchec.has(source.url)) {
-        if (source.tentatives === 1) {
-          source.tentatives = 2;
+        if (tentatives.get(source.url) === 1) {
+          tentatives.set(source.url, 2);
+          mission.requetes_reseau += 1;
           consommer();
-          journaliser("erreur", `FETCH ${source.url} → timeout (1/2), nouvelle tentative`);
+          journaliser("erreur", `Erreur lecture d'une page : délai dépassé (tentative 1/2)`);
+          journaliser("lecture", `Tentative 2/2 : ${source.url}`);
           return;
         }
-        source.statut = "abandon";
-        journaliser("abandon", `ABANDON ${hote(source.url)} : 2 tentatives atteintes`);
+        source.statut = "echec";
+        source.erreur = "timeout";
+        journaliser("erreur", `Erreur lecture d'une page : délai dépassé — deux tentatives, abandon`);
       } else {
         source.statut = "ok";
+        source.titre = `Page ${compteur} (simulée)`;
         okDepuisConstat += 1;
-        journaliser("lecture", `FETCH ${source.url} → ok (200), 1 page conservée`);
+        journaliser("lecture", `Page conservée : ${source.url}`);
       }
+      mission.action_en_cours = null;
       phase = okDepuisConstat >= 2 ? "constat" : compteur % 3 === 0 ? "recherche" : "ouvrir";
       return;
     }
     if (phase === "constat") {
-      const preuves = mission.sources.filter((s) => s.statut === "ok").slice(-2).map((s) => s.url);
+      const preuves = mission.sources
+        .filter((s) => s.statut === "ok")
+        .slice(-2)
+        .map((s, i) => ({ url: s.url, source_id: null, extrait: EXTRAITS[(mission.constats.length + i) % EXTRAITS.length] }));
       const n = mission.constats.length;
+      mission.action_en_cours = "save_finding";
       mission.constats.push({
         id: `c${n + 1}`,
         titre: TITRES[n % TITRES.length],
         resume: RESUMES[n % RESUMES.length],
         interet_developpeur: IMPACTS[n % IMPACTS.length],
-        sources: preuves,
-        confiance: preuves.length > 1 ? "corroborated" : "single_source",
+        preuves,
         date_evenement: new Date(Date.now() - (n + 1) * 86400000).toISOString().slice(0, 10),
         statut_date: "in_window",
+        confiance: preuves.length > 1 ? "corroborated" : "single_source",
+        reserves: n % 2 === 1 ? ["Annonce non encore reprise dans la documentation."] : [],
       });
       consommer();
-      journaliser("constat", `SAVE constat #${n + 1}, ${preuves.length} preuve(s)`);
+      journaliser("constat", `Constat nouveau #c${n + 1}, ${preuves.length} preuve(s)`);
+      mission.action_en_cours = null;
       okDepuisConstat = 0;
       phase = "ouvrir";
     }
@@ -223,14 +442,15 @@ function creerSimulateur() {
     if (!mission) return;
     if (mission.statut === "pending") {
       mission.statut = "running";
-      journaliser("etat", `START sujet="${mission.sujet}" budget=${mission.budget.max} échéance=${mission.temps.max_s / 60}min`);
+      journaliser("etat", "Démarrage de l'agent");
       return;
     }
     if (mission.statut === "stopping") {
       ticksArret += 1;
       if (ticksArret >= 2) {
         mission.statut = "stopped";
-        journaliser("etat", `STOPPED budget restant=${mission.budget.restant}, écoulé=${Math.round(mission.temps.ecoule_s)}s`);
+        mission.action_en_cours = null;
+        journaliser("etat", `Fin de mission : arrêté (manuel), budget restant ${mission.budget.restant}`);
       }
       return;
     }
@@ -242,15 +462,18 @@ function creerSimulateur() {
   }
 
   return {
-    async creerMission(payload) {
+    async creerMission(valeurs) {
       await attendre();
       mission = {
         id: `demo-${Date.now().toString(36)}`,
         statut: "pending",
-        sujet: payload.sujet,
-        domaines: payload.domaines,
-        budget: { restant: payload.budget_max, max: payload.budget_max },
-        temps: { ecoule_s: 0, max_s: payload.duree_max_minutes * 60 },
+        sujet: valeurs.sujet,
+        domaines: valeurs.domaines,
+        budget: { restant: valeurs.budget, max: valeurs.budget },
+        temps: { ecoule_s: 0, max_s: valeurs.duree * 60 },
+        action_en_cours: null,
+        appels_modele: 0,
+        requetes_reseau: 0,
         sources: [],
         constats: [],
         journal: [],
@@ -262,6 +485,8 @@ function creerSimulateur() {
       okDepuisConstat = 0;
       ticksArret = 0;
       urlsEnEchec.clear();
+      tentatives.clear();
+      journaliser("etat", `Mission créée : « ${mission.sujet} », ${mission.domaines.length} domaine(s), budget ${mission.budget.max}, durée ${valeurs.duree} min`);
       return copie();
     },
 
@@ -276,7 +501,7 @@ function creerSimulateur() {
       if (mission.statut === "pending" || mission.statut === "running") {
         mission.statut = "stopping";
         ticksArret = 0;
-        journaliser("etat", "STOPPING arrêt demandé, appel en cours borné par son délai");
+        journaliser("etat", "Arrêt demandé par l'opérateur : plus aucune nouvelle action");
       }
       return copie();
     },
@@ -309,21 +534,29 @@ const els = {
   curseurBudget: $("curseur-budget"),
   champDuree: $("champ-duree"),
   curseurDuree: $("curseur-duree"),
+  champJeton: $("champ-jeton"),
   presets: Array.from(document.querySelectorAll(".preset")),
   resumeMission: $("resume-mission"),
   erreurFormulaire: $("erreur-formulaire"),
   boutonLancer: $("bouton-lancer"),
+  iconeChargementLancer: $("bouton-lancer").querySelector(".icone-chargement"),
+  texteBoutonLancer: $("bouton-lancer").querySelector(".bouton-texte"),
 
   bandeauDemo: $("bandeau-demo"),
   bandeauConnexion: $("bandeau-connexion"),
   bandeauErreur: $("bandeau-erreur"),
   etatBadgeGrand: $("etat-badge-grand"),
   etatDescription: $("etat-description"),
+  actionEnCours: $("action-en-cours"),
   derniereAction: $("derniere-action"),
   statSourcesOk: $("stat-sources-ok"),
-  statSourcesAbandon: $("stat-sources-abandon"),
+  statSourcesEchec: $("stat-sources-echec"),
   statConstats: $("stat-constats"),
+  statAppelsModele: $("stat-appels-modele"),
+  statRequetesReseau: $("stat-requetes-reseau"),
   boutonArret: $("bouton-arret"),
+  iconeArret: $("bouton-arret").querySelector("use"),
+  texteArret: $("bouton-arret").querySelector(".bouton-texte"),
   boutonNouvelleRecherche: $("bouton-nouvelle-recherche"),
 
   anneauBudgetBloc: $("anneau-budget-bloc"),
@@ -352,11 +585,6 @@ const els = {
   boutonJournalReplier: $("bouton-journal-replier"),
   journalVide: $("journal-vide"),
   journalListe: $("journal-liste"),
-
-  iconeChargementLancer: $("bouton-lancer").querySelector(".icone-chargement"),
-  texteBoutonLancer: $("bouton-lancer").querySelector(".bouton-texte"),
-  iconeArret: $("bouton-arret").querySelector("use"),
-  texteArret: $("bouton-arret").querySelector(".bouton-texte"),
 };
 
 // ---------- Utilitaires ----------
@@ -401,7 +629,7 @@ function hoteEtChemin(url) {
 }
 
 function urlSure(url) {
-  return /^https?:\/\//i.test(url);
+  return /^https:\/\//i.test(url);
 }
 
 // ---------- Thème ----------
@@ -486,7 +714,8 @@ function normaliserDomaine(brut) {
     .toLowerCase()
     .replace(/^[a-z]+:\/\//, "")
     .split(/[/?#]/)[0]
-    .replace(/:\d+$/, "");
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "");
 }
 
 function afficherErreurDomaine(message) {
@@ -525,7 +754,7 @@ function ajouterDomaine(brut) {
 
   let erreur = null;
   if (domaines.length >= MAX_DOMAINES) erreur = `Au plus ${MAX_DOMAINES} domaines autorisés.`;
-  else if (!MOTIF_DOMAINE.test(domaine)) erreur = "Un domaine ressemble à exemple.org, sans http:// ni chemin.";
+  else if (!MOTIF_DOMAINE.test(domaine)) erreur = "Indiquer un nom de domaine public, comme www.exemple.org, sans http:// ni chemin.";
   else if (domaines.includes(domaine)) erreur = "Ce domaine est déjà dans la liste.";
 
   if (erreur) {
@@ -633,6 +862,7 @@ function lireFormulaire() {
     domaines: [...domaines],
     budget: Number(els.champBudget.value),
     duree: Number(els.champDuree.value),
+    jeton: els.champJeton.value.trim(),
   };
 }
 
@@ -641,9 +871,17 @@ function validerFormulaire() {
   const erreurs = [];
 
   if (!valeurs.sujet) erreurs.push("Le sujet est obligatoire.");
+  else if (valeurs.sujet.length > MAX_SUJET) erreurs.push(`Le sujet dépasse ${MAX_SUJET} caractères.`);
   if (valeurs.domaines.length === 0) erreurs.push("Ajoutez au moins un domaine autorisé.");
-  if (!Number.isInteger(valeurs.budget) || valeurs.budget < 1) erreurs.push("Le budget d'actions doit être un entier positif.");
-  if (!Number.isInteger(valeurs.duree) || valeurs.duree < 1) erreurs.push("La durée maximale doit être un entier positif, en minutes.");
+  if (!Number.isInteger(valeurs.budget) || valeurs.budget < 1 || valeurs.budget > MAX_BUDGET) {
+    erreurs.push(`Le budget d'actions doit être un entier entre 1 et ${MAX_BUDGET}.`);
+  }
+  if (!Number.isInteger(valeurs.duree) || valeurs.duree < 1 || valeurs.duree > MAX_DUREE) {
+    erreurs.push(`La durée maximale doit être un entier entre 1 et ${MAX_DUREE} minutes.`);
+  }
+  if (!MODE_DEMO && valeurs.jeton.length < LONGUEUR_MIN_JETON) {
+    erreurs.push(`Le jeton opérateur est requis (${LONGUEUR_MIN_JETON} caractères minimum).`);
+  }
 
   return { ...valeurs, erreurs, valide: erreurs.length === 0 };
 }
@@ -703,12 +941,14 @@ function reinitialiserFormulaire() {
   domaines = [];
   for (const chip of els.chipsDomaines.querySelectorAll(".chip")) chip.remove();
   masquerErreurDomaine();
+  els.champJeton.value = jetonMemoire;
   majCurseurBudget();
   majCurseurDuree();
   mettreAJourFormulaire();
 }
 
 els.champSujet.addEventListener("input", mettreAJourFormulaire);
+els.champJeton.addEventListener("input", mettreAJourFormulaire);
 
 els.formLancement.addEventListener("submit", async (evenement) => {
   evenement.preventDefault();
@@ -721,20 +961,18 @@ els.formLancement.addEventListener("submit", async (evenement) => {
     return;
   }
 
+  jetonMemoire = valeurs.jeton;
   definirChargement(true);
   try {
-    const mission = await api.creerMission({
-      sujet: valeurs.sujet,
-      domaines: valeurs.domaines,
-      budget_max: valeurs.budget,
-      duree_max_minutes: valeurs.duree,
-    });
+    const mission = await api.creerMission(valeurs);
     demarrerSuiviMission(mission);
-  } catch {
-    els.erreurFormulaire.textContent =
-      "Impossible de lancer la recherche pour l'instant. Le service est peut-être indisponible.";
+  } catch (erreur) {
+    const message = erreur instanceof TypeError
+      ? "Le service ne répond pas. Vérifiez que le serveur Lockin est lancé."
+      : erreur.message || "Impossible de lancer la recherche.";
+    els.erreurFormulaire.textContent = message;
     els.erreurFormulaire.hidden = false;
-    afficherToast("Le service ne répond pas.", "danger");
+    afficherToast(message, "danger");
   } finally {
     definirChargement(false);
   }
@@ -752,6 +990,7 @@ let missionCourante = null;
 let statutPrecedent = null;
 let derniereReception = 0;
 let echecsConsecutifs = 0;
+let lectureEnCours = false;
 let intervalleId = null;
 let horlogeId = null;
 
@@ -760,16 +999,18 @@ function definirAnneau(cercle, ratio) {
   cercle.style.strokeDashoffset = `${CIRCONFERENCE_ANNEAU * (1 - r)}`;
 }
 
-// Synchronise une liste DOM append-only avec un tableau de données : seules
-// les entrées nouvelles sont créées (et animées), les autres sont mises à
-// jour en place. Indispensable avec un rafraîchissement toutes les secondes,
-// sinon le journal clignote et le défilement saute.
+// Synchronise une liste DOM avec un tableau de données : seules les entrées
+// nouvelles sont créées (et animées), les autres sont mises à jour en place,
+// les disparues sont retirées. Indispensable avec un rafraîchissement toutes
+// les secondes, sinon le journal clignote et le défilement saute.
 function synchroniserListe(conteneur, items, cleDe, creerNoeud, mettreAJourNoeud) {
   const existants = new Map();
   for (const enfant of conteneur.children) existants.set(enfant.dataset.cle, enfant);
 
+  const clesVues = new Set();
   items.forEach((item, index) => {
     const cle = String(cleDe(item, index));
+    clesVues.add(cle);
     const existant = existants.get(cle);
     if (existant) {
       mettreAJourNoeud(existant, item);
@@ -780,17 +1021,13 @@ function synchroniserListe(conteneur, items, cleDe, creerNoeud, mettreAJourNoeud
       conteneur.appendChild(noeud);
     }
   });
+  for (const [cle, noeud] of existants) if (!clesVues.has(cle)) noeud.remove();
 }
 
 // Sources
 
-const ICONES_STATUT_SOURCE = { ok: "ok", en_cours: "chargement", abandon: "croix" };
-
-function libelleStatutSource(source) {
-  if (source.statut === "ok") return "ok";
-  if (source.statut === "en_cours") return source.tentatives > 1 ? `essai ${source.tentatives}` : "en cours";
-  return "abandon";
-}
+const ICONES_STATUT_SOURCE = { ok: "ok", en_cours: "chargement", echec: "croix" };
+const LIBELLES_STATUT_SOURCE = { ok: "ok", en_cours: "en cours", echec: "échec" };
 
 function creerNoeudSource(source) {
   const li = document.createElement("li");
@@ -812,18 +1049,18 @@ function creerNoeudSource(source) {
 
 function mettreAJourNoeudSource(li, source) {
   const { hote, chemin } = hoteEtChemin(source.url);
-  li.querySelector(".source-hote").textContent = hote;
-  li.querySelector(".source-chemin").textContent = chemin;
-  li.title = source.url;
+  li.querySelector(".source-hote").textContent = source.titre || hote;
+  li.querySelector(".source-chemin").textContent = source.titre ? hote + chemin : chemin;
+  li.title = source.erreur ? `${source.url}\n${libelleErreur(source.erreur)}` : source.url;
 
   const ic = li.querySelector(".source-icone");
   const statut = li.querySelector(".source-statut");
-  const empreinte = `${source.statut}|${source.tentatives ?? ""}`;
+  const empreinte = `${source.statut}|${source.erreur ?? ""}`;
   if (statut.dataset.empreinte !== empreinte) {
     statut.dataset.empreinte = empreinte;
     statut.dataset.statut = source.statut;
     ic.dataset.statut = source.statut;
-    statut.textContent = libelleStatutSource(source);
+    statut.textContent = LIBELLES_STATUT_SOURCE[source.statut] || source.statut;
     ic.replaceChildren(icone(ICONES_STATUT_SOURCE[source.statut] || "ok"));
     relancerAnimation(statut, "statut-maj");
   }
@@ -836,6 +1073,30 @@ function libelleDateConstat(constat) {
   if (constat.date_evenement) morceaux.push(constat.date_evenement);
   if (LIBELLES_STATUT_DATE[constat.statut_date]) morceaux.push(LIBELLES_STATUT_DATE[constat.statut_date]);
   return morceaux.join(" · ");
+}
+
+function creerLienSource(url, libelleRepli) {
+  let lien;
+  if (url && urlSure(url)) {
+    lien = document.createElement("a");
+    lien.href = url;
+    lien.target = "_blank";
+    lien.rel = "noopener noreferrer";
+  } else {
+    lien = document.createElement("span");
+  }
+  lien.className = "constat-source";
+  lien.title = url || libelleRepli;
+  lien.appendChild(icone("lien"));
+  const libelle = document.createElement("span");
+  if (url) {
+    const { hote, chemin } = hoteEtChemin(url);
+    libelle.textContent = hote + chemin;
+  } else {
+    libelle.textContent = libelleRepli;
+  }
+  lien.appendChild(libelle);
+  return lien;
 }
 
 function creerNoeudConstat(constat) {
@@ -871,26 +1132,26 @@ function creerNoeudConstat(constat) {
     li.appendChild(impact);
   }
 
+  for (const preuve of constat.preuves || []) {
+    const bloc = document.createElement("blockquote");
+    bloc.className = "constat-preuve";
+    if (preuve.extrait) {
+      const extrait = document.createElement("p");
+      extrait.className = "constat-extrait";
+      extrait.textContent = `« ${preuve.extrait} »`;
+      bloc.appendChild(extrait);
+    }
+    bloc.appendChild(creerLienSource(preuve.url, preuve.source_id ? `source ${preuve.source_id}` : "source inconnue"));
+    li.appendChild(bloc);
+  }
+
   const pied = document.createElement("div");
   pied.className = "constat-pied";
-  for (const url of constat.sources || []) {
-    const { hote, chemin } = hoteEtChemin(url);
-    let lien;
-    if (urlSure(url)) {
-      lien = document.createElement("a");
-      lien.href = url;
-      lien.target = "_blank";
-      lien.rel = "noopener noreferrer";
-    } else {
-      lien = document.createElement("span");
-    }
-    lien.className = "constat-source";
-    lien.title = url;
-    lien.appendChild(icone("lien"));
-    const libelle = document.createElement("span");
-    libelle.textContent = hote + chemin;
-    lien.appendChild(libelle);
-    pied.appendChild(lien);
+  if (constat.reserves && constat.reserves.length) {
+    const reserves = document.createElement("p");
+    reserves.className = "constat-reserves";
+    reserves.textContent = `Réserves : ${constat.reserves.join(" · ")}`;
+    pied.appendChild(reserves);
   }
   const date = libelleDateConstat(constat);
   if (date) {
@@ -899,28 +1160,16 @@ function creerNoeudConstat(constat) {
     el.textContent = date;
     pied.appendChild(el);
   }
-  li.appendChild(pied);
+  if (pied.childNodes.length) li.appendChild(pied);
 
   return li;
 }
 
 // Journal
 
-function typeEntreeJournal(entree) {
-  if (entree.type) return entree.type;
-  const message = String(entree.message || "").trim().toUpperCase();
-  if (message.startsWith("SEARCH")) return "recherche";
-  if (message.startsWith("FETCH") || message.startsWith("READ")) return "lecture";
-  if (message.startsWith("ABANDON")) return "abandon";
-  if (message.startsWith("SAVE")) return "constat";
-  if (/^(START|STOP|COMPLETED|BUDGET|DEADLINE|FAILED|ETAT|STATE)/.test(message)) return "etat";
-  if (/ERREUR|ERROR|TIMEOUT|ECHEC|ÉCHEC/.test(message)) return "erreur";
-  return "info";
-}
-
 function creerNoeudJournal(entree) {
   const li = document.createElement("li");
-  li.dataset.type = typeEntreeJournal(entree);
+  li.dataset.type = entree.type || "interne";
 
   const point = document.createElement("span");
   point.className = "journal-point";
@@ -933,7 +1182,7 @@ function creerNoeudJournal(entree) {
   const budget = document.createElement("span");
   budget.className = "journal-budget";
   if (entree.budget_restant !== undefined && entree.budget_restant !== null) {
-    budget.textContent = `budget ${entree.budget_restant}`;
+    budget.textContent = `reste ${entree.budget_restant}`;
   }
 
   li.append(point, heure, message, budget);
@@ -941,8 +1190,9 @@ function creerNoeudJournal(entree) {
 }
 
 function ligneJournal(entree) {
-  const budget = entree.budget_restant !== undefined && entree.budget_restant !== null ? `  [budget ${entree.budget_restant}]` : "";
-  return `${entree.ts}  ${entree.message}${budget}`;
+  const seq = entree.seq !== undefined && entree.seq !== null ? `#${String(entree.seq).padStart(3, "0")}  ` : "";
+  const budget = entree.budget_restant !== undefined && entree.budget_restant !== null ? `  [reste ${entree.budget_restant}]` : "";
+  return `${seq}${entree.ts}  ${entree.message}${budget}`;
 }
 
 // Temps : entre deux réponses du serveur, on fait avancer l'horloge en local
@@ -1023,27 +1273,35 @@ function rendreMission(mission) {
 
   rendreTemps();
 
+  els.actionEnCours.textContent = mission.action_en_cours
+    ? LIBELLES_ACTION[mission.action_en_cours] || mission.action_en_cours
+    : actif ? "décision du modèle en cours" : "—";
+
   const sources = mission.sources || [];
   synchroniserListe(els.listeSources, sources, (s) => s.url, creerNoeudSource, mettreAJourNoeudSource);
   els.sourcesVide.hidden = sources.length !== 0;
   els.sourcesCompteur.textContent = String(sources.length);
   const nbOk = sources.filter((s) => s.statut === "ok").length;
-  const nbAbandon = sources.filter((s) => s.statut === "abandon").length;
+  const nbEchec = sources.filter((s) => s.statut === "echec").length;
   definirTexteAvecEclat(els.statSourcesOk, String(nbOk));
-  definirTexteAvecEclat(els.statSourcesAbandon, String(nbAbandon));
+  definirTexteAvecEclat(els.statSourcesEchec, String(nbEchec));
+  definirTexteAvecEclat(els.statAppelsModele, String(mission.appels_modele ?? 0));
+  definirTexteAvecEclat(els.statRequetesReseau, String(mission.requetes_reseau ?? 0));
 
   const constats = mission.constats || [];
   synchroniserListe(els.listeConstats, constats, (c, i) => c.id ?? i, creerNoeudConstat, () => {});
   els.syntheseVide.hidden = constats.length !== 0;
-  els.syntheseVideTexte.textContent = ETATS_TERMINAUX.has(statut)
-    ? "Aucune nouveauté pertinente trouvée. C'est un résultat valide, pas une panne."
-    : "Aucun constat pour l'instant.";
+  if (constats.length === 0) {
+    els.syntheseVideTexte.textContent = ETATS_TERMINAUX.has(statut)
+      ? `${mission.synthese || "Aucune nouveauté pertinente trouvée."} Ce n'est pas une panne : ne rien avoir trouvé est un résultat valide.`
+      : mission.synthese || "Aucun constat pour l'instant.";
+  }
   definirTexteAvecEclat(els.statConstats, String(constats.length));
-  const partielle = (statut !== "completed" && statut !== "pending") || nbAbandon > 0;
+  const partielle = mission.partielle ?? ((statut !== "completed" && statut !== "pending") || nbEchec > 0);
   els.synthesePartielle.hidden = !partielle;
 
   const journal = mission.journal || [];
-  synchroniserListe(els.journalListe, journal, (_e, i) => i, creerNoeudJournal, () => {});
+  synchroniserListe(els.journalListe, journal, (e, i) => e.seq ?? i, creerNoeudJournal, () => {});
   els.journalVide.hidden = journal.length !== 0;
   els.journalCompteur.textContent = String(journal.length);
   if (els.journalSuivre.checked) els.journalListe.scrollTop = els.journalListe.scrollHeight;
@@ -1092,8 +1350,10 @@ function demarrerSuiviMission(mission) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 
   rendreMission(mission);
-  demarrerRafraichissement();
-  demarrerHorloge();
+  if (!ETATS_TERMINAUX.has(mission.statut)) {
+    demarrerRafraichissement();
+    demarrerHorloge();
+  }
 }
 
 function revenirAccueil() {
@@ -1128,10 +1388,12 @@ function arreterRafraichissement() {
 }
 
 async function rafraichirMission() {
-  if (!missionCourante) return;
+  if (!missionCourante || lectureEnCours) return;
+  const identifiant = missionCourante.id;
+  lectureEnCours = true;
   try {
-    const mission = await api.obtenirMission(missionCourante.id);
-    if (!missionCourante) return;
+    const mission = await api.obtenirMission(identifiant);
+    if (!missionCourante || missionCourante.id !== identifiant) return;
     missionCourante = mission;
     derniereReception = Date.now();
     echecsConsecutifs = 0;
@@ -1140,6 +1402,8 @@ async function rafraichirMission() {
   } catch {
     echecsConsecutifs += 1;
     if (echecsConsecutifs >= 2) els.bandeauConnexion.hidden = false;
+  } finally {
+    lectureEnCours = false;
   }
 }
 
@@ -1147,16 +1411,17 @@ async function rafraichirMission() {
 
 els.boutonArret.addEventListener("click", async () => {
   if (!missionCourante) return;
+  const identifiant = missionCourante.id;
   rendreBoutonArret(missionCourante.statut, true);
   try {
-    const mission = await api.arreterMission(missionCourante.id);
-    if (!missionCourante) return;
+    const mission = await api.arreterMission(identifiant);
+    if (!missionCourante || missionCourante.id !== identifiant) return;
     missionCourante = mission;
     derniereReception = Date.now();
     rendreMission(mission);
-  } catch {
-    rendreBoutonArret(missionCourante.statut);
-    afficherToast("L'ordre d'arrêt n'a pas pu être transmis. Réessayez.", "danger");
+  } catch (erreur) {
+    if (missionCourante) rendreBoutonArret(missionCourante.statut);
+    afficherToast(`L'ordre d'arrêt n'a pas pu être transmis : ${erreur.message || "réessayez."}`, "danger");
   }
 });
 
@@ -1181,7 +1446,7 @@ els.journalSuivre.addEventListener("change", () => {
 });
 
 els.boutonCopierJournal.addEventListener("click", async () => {
-  const lignes = (missionCourante?.journal || []).map(ligneJournal);
+  const lignes = ((missionCourante && missionCourante.journal) || []).map(ligneJournal);
   try {
     await navigator.clipboard.writeText(lignes.join("\n"));
     afficherToast(`Journal copié (${lignes.length} ligne${lignes.length > 1 ? "s" : ""}).`, "succes");
@@ -1212,5 +1477,6 @@ els.boutonJournalReplier.addEventListener("click", () => {
 
 // ---------- Initialisation ----------
 
+els.champJeton.closest(".champ").hidden = MODE_DEMO;
 mettreAJourFormulaire();
 if (MODE_DEMO) afficherToast("Mode démonstration : données simulées, aucun appel réseau.", "attention");

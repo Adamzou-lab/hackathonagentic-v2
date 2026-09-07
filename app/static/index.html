@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
 
@@ -31,6 +31,7 @@
     <symbol id="i-journal" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></symbol>
     <symbol id="i-lien" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
   </svg>
 
   <div class="decor" aria-hidden="true">
@@ -41,7 +42,7 @@
   <div id="barre-activite" class="barre-activite" aria-hidden="true"></div>
 
   <header class="topbar">
-    <a class="marque" href="./" aria-label="Lockin, accueil">
+    <a class="marque" href="/" aria-label="Lockin, accueil">
       <span class="marque-logo" aria-hidden="true">L</span>
       <span>Lockin</span>
     </a>
@@ -74,7 +75,7 @@
         <label for="champ-sujet">Quel sujet souhaitez-vous explorer&nbsp;?</label>
         <div class="saisie saisie-icone">
           <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
-          <input type="text" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" maxlength="200" required />
+          <input type="text" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" maxlength="500" required />
         </div>
       </div>
 
@@ -84,10 +85,11 @@
           <span id="domaines-compteur" class="compteur">0 / 5</span>
         </div>
         <div id="chips-domaines" class="chips" role="group" aria-label="Domaines autorisés">
-          <input type="text" id="champ-domaine" placeholder="exemple.org puis Entrée" autocomplete="off" spellcheck="false" />
+          <input type="text" id="champ-domaine" placeholder="www.exemple.org puis Entrée" autocomplete="off" spellcheck="false" />
         </div>
         <p class="aide">
-          L'agent ne lira que ces domaines. Entrée ou virgule pour ajouter, Retour arrière pour retirer le dernier.
+          Noms d'hôte exacts, sans http:// ni chemin — <code>www.exemple.org</code> et <code>exemple.org</code> sont deux domaines distincts.
+          Entrée ou virgule pour ajouter, Retour arrière pour retirer le dernier.
         </p>
         <p id="erreur-domaine" class="erreur-champ" role="alert" hidden></p>
       </div>
@@ -99,10 +101,10 @@
               <svg class="icone icone-label" aria-hidden="true"><use href="#i-eclair"/></svg>
               Budget d'actions
             </label>
-            <input type="number" id="champ-budget" class="saisie-nombre" min="1" max="500" step="1" value="100" />
+            <input type="number" id="champ-budget" class="saisie-nombre" min="1" max="100" step="1" value="20" />
           </div>
-          <input type="range" id="curseur-budget" class="curseur" min="5" max="300" step="5" value="100" aria-label="Budget d'actions" />
-          <p class="aide">Tentatives d'outils : recherche, lecture, sauvegarde — les échecs comptent aussi.</p>
+          <input type="range" id="curseur-budget" class="curseur" min="1" max="100" step="1" value="20" aria-label="Budget d'actions" />
+          <p class="aide">Tentatives d'outils, de 1 à 100 : recherche, lecture, sauvegarde — les échecs comptent aussi.</p>
         </div>
         <div class="champ">
           <div class="label-ligne">
@@ -110,23 +112,37 @@
               <svg class="icone icone-label" aria-hidden="true"><use href="#i-horloge"/></svg>
               Durée maximale (min)
             </label>
-            <input type="number" id="champ-duree" class="saisie-nombre" min="1" max="120" step="1" value="30" />
+            <input type="number" id="champ-duree" class="saisie-nombre" min="1" max="30" step="1" value="10" />
           </div>
-          <input type="range" id="curseur-duree" class="curseur" min="1" max="120" step="1" value="30" aria-label="Durée maximale en minutes" />
-          <p class="aide">Échéance indépendante du budget. L'agent s'arrête au premier des deux atteint.</p>
+          <input type="range" id="curseur-duree" class="curseur" min="1" max="30" step="1" value="10" aria-label="Durée maximale en minutes" />
+          <p class="aide">Échéance de 1 à 30 minutes, indépendante du budget. L'agent s'arrête au premier des deux atteint.</p>
         </div>
       </div>
 
       <div class="presets" role="group" aria-label="Réglages rapides">
-        <button type="button" class="preset ondule" data-budget="20" data-duree="5">
-          <strong>Rapide</strong><span>20 actions · 5 min</span>
+        <button type="button" class="preset ondule" data-budget="10" data-duree="5">
+          <strong>Rapide</strong><span>10 actions · 5 min</span>
+        </button>
+        <button type="button" class="preset ondule" data-budget="20" data-duree="10">
+          <strong>Standard</strong><span>20 actions · 10 min</span>
         </button>
         <button type="button" class="preset ondule" data-budget="100" data-duree="30">
-          <strong>Standard</strong><span>100 actions · 30 min</span>
+          <strong>Approfondi</strong><span>100 actions · 30 min</span>
         </button>
-        <button type="button" class="preset ondule" data-budget="200" data-duree="60">
-          <strong>Approfondi</strong><span>200 actions · 60 min</span>
-        </button>
+      </div>
+
+      <div class="champ">
+        <label for="champ-jeton">
+          <svg class="icone icone-label" aria-hidden="true"><use href="#i-cadenas"/></svg>
+          Jeton opérateur
+        </label>
+        <div class="saisie saisie-icone">
+          <svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg>
+          <input type="password" id="champ-jeton" autocomplete="off" placeholder="LOCKIN_ACCESS_TOKEN, 32 caractères minimum" />
+        </div>
+        <p class="aide">
+          Le secret d'accès à votre instance, jamais votre clé Anthropic. Il reste en mémoire de la page : ni dans l'URL, ni dans un fichier.
+        </p>
       </div>
 
       <p id="resume-mission" class="resume-mission" aria-live="polite"></p>
@@ -152,7 +168,7 @@
       <article class="promesse">
         <svg class="icone" aria-hidden="true"><use href="#i-bouclier"/></svg>
         <h3>Journal reconstituable</h3>
-        <p>Chaque événement porte l'heure et le budget restant. On retrouve l'état exact à n'importe quel instant.</p>
+        <p>Chaque événement est horodaté et numéroté. On retrouve l'état exact à n'importe quel instant.</p>
       </article>
     </section>
   </main>
@@ -173,14 +189,22 @@
           <span id="etat-badge-grand" class="etat-badge etat-badge-grand" data-etat="pending">En attente</span>
         </div>
         <p id="etat-description" class="etat-description"></p>
-        <div class="derniere-action">
-          <span class="derniere-action-label">Dernière action</span>
-          <span id="derniere-action" class="derniere-action-texte">—</span>
+        <div class="etat-infos">
+          <div class="derniere-action">
+            <span class="derniere-action-label">Action en cours</span>
+            <span id="action-en-cours" class="derniere-action-texte">—</span>
+          </div>
+          <div class="derniere-action">
+            <span class="derniere-action-label">Dernier événement</span>
+            <span id="derniere-action" class="derniere-action-texte">—</span>
+          </div>
         </div>
         <div class="etat-stats">
           <div class="stat"><strong id="stat-sources-ok">0</strong><span>sources lues</span></div>
-          <div class="stat"><strong id="stat-sources-abandon">0</strong><span>abandonnées</span></div>
+          <div class="stat"><strong id="stat-sources-echec">0</strong><span>en échec</span></div>
           <div class="stat"><strong id="stat-constats">0</strong><span>constats</span></div>
+          <div class="stat"><strong id="stat-appels-modele">0</strong><span>appels modèle</span></div>
+          <div class="stat"><strong id="stat-requetes-reseau">0</strong><span>requêtes réseau</span></div>
         </div>
         <div class="etat-actions">
           <button type="button" id="bouton-arret" class="bouton bouton-danger ondule">
@@ -271,8 +295,9 @@
             <button type="button" class="filtre ondule" data-filtre="recherche">Recherches</button>
             <button type="button" class="filtre ondule" data-filtre="lecture">Lectures</button>
             <button type="button" class="filtre ondule" data-filtre="constat">Constats</button>
-            <button type="button" class="filtre ondule" data-filtre="abandon">Abandons</button>
+            <button type="button" class="filtre ondule" data-filtre="erreur">Erreurs</button>
             <button type="button" class="filtre ondule" data-filtre="etat">États</button>
+            <button type="button" class="filtre ondule" data-filtre="interne">Interne</button>
           </div>
           <label class="bascule">
             <input type="checkbox" id="journal-suivre" checked />
@@ -300,6 +325,6 @@
 
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
 
-  <script src="app.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
