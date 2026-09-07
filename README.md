@@ -107,4 +107,4 @@ Tests backend sans appels Anthropic après installation : `.venv/bin/python -m p
 
 ## Organisation Git
 
-Contributions sur `adam` et `panaki`, intégration par pull request vers `dev`, puis validation vers `main`. Seul Panaki modifie sa branche. Codex et Claude se répartissent les fichiers avant intervention.
+Contributions sur `adam` et `panaki`, intégration par pull request vers `dev`, puis validation vers `main`.
