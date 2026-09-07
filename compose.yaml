@@ -1,0 +1,35 @@
+# Lockin : un service unique. Le backend sert l'API et l'interface.
+# Demarrage : cp .env.example .env, puis docker compose up --build
+
+services:
+  lockin:
+    build: .
+    ports:
+      # 127.0.0.1 en tete, volontairement : sans cette adresse, Docker publie
+      # sur toutes les interfaces et le service devient joignable depuis le
+      # reseau local. Pendant le hackathon, les autres binomes sont sur ce
+      # reseau. Retirer le 127.0.0.1 est une decision d'exposition, pas un
+      # detail de confort.
+      - "127.0.0.1:8000:8000"
+    env_file:
+      # Ce fichier n'est jamais versionne. Voir .env.example pour le modele.
+      - .env
+    volumes:
+      # Le journal et les constats vivent ici, hors du conteneur.
+      # Sans ce volume, un redemarrage effacerait le journal d'une mission,
+      # et reconstituer l'etat d'un agent arrete deviendrait impossible.
+      # C'est la promesse centrale du sujet, donc ce volume n'est pas optionnel.
+      - lockin_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      # /health est public et ne prouve que la reponse du serveur, pas la
+      # validite de la cle fournisseur. C'est volontaire : une sonde ne doit
+      # pas consommer de quota Anthropic a chaque passage.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  lockin_data:

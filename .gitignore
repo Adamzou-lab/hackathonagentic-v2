@@ -1,6 +1,8 @@
 # Secrets. Seul .env.example est versionne, jamais un .env reel.
 # Rappel du brief : une cle d'API commitee coute 10 points, immediatement.
 .env
+.lockin/
+.lockin-secret-*
 .env.*
 !.env.example
 *.pem
