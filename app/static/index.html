@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Lockin</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
 
@@ -17,7 +17,7 @@
       <form id="form-lancement" class="form-lancement" novalidate>
         <div class="champ">
           <label for="champ-sujet">Quel sujet souhaitez-vous explorer&nbsp;?</label>
-          <input type="text" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" required />
+          <input type="text" maxlength="500" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" required />
         </div>
 
         <div class="champ">
@@ -35,15 +35,20 @@
           <!-- Champs de domaines générés par app.js selon le sélecteur ci-dessus -->
         </div>
 
+        <div class="champ">
+          <label for="jeton-operateur">Accès à Lockin</label>
+          <input type="password" id="jeton-operateur" autocomplete="off" placeholder="Jeton opérateur" />
+          <p class="aide">Le jeton d’accès à votre instance, jamais votre clé Anthropic.</p>
+        </div>
         <div class="champ champ-double">
           <div class="sous-champ">
             <label for="champ-budget">Budget d'actions</label>
-            <input type="number" id="champ-budget" name="budget" min="1" max="500" step="1" value="100" required />
+            <input type="number" id="champ-budget" name="budget" min="1" max="100" step="1" value="100" required />
             <p class="aide">Tentatives d'outils : recherche, lecture, sauvegarde — y compris les échecs.</p>
           </div>
           <div class="sous-champ">
             <label for="champ-duree">Durée maximale (minutes)</label>
-            <input type="number" id="champ-duree" name="duree" min="1" max="120" step="1" value="30" required />
+            <input type="number" id="champ-duree" name="duree" min="1" max="30" step="1" value="30" required />
             <p class="aide">L'agent s'arrête au premier des deux atteint : budget ou durée.</p>
           </div>
         </div>
@@ -125,6 +130,7 @@
     </p>
   </main>
 
-  <script src="app.js"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
+

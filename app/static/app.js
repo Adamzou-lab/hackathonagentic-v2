@@ -1,57 +1,37 @@
 "use strict";
 
-/**
- * Contrat API assumé pour ce socle, en attendant API.md fourni par Codex.
- * À aligner avec Adam dès que le contrat réel est publié — seule la
- * fonction `api` ci-dessous devrait avoir besoin de changer.
- *
- *   POST /api/missions
- *     body:  { sujet, domaines: string[], budget_max, duree_max_minutes }
- *     resp:  Mission
- *
- *   GET /api/missions/:id
- *     resp:  Mission
- *
- *   POST /api/missions/:id/arret
- *     resp:  Mission
- *
- *   Mission = {
- *     id, statut,               // pending | running | stopping | stopped
- *                                // | completed | budget_exhausted
- *                                // | deadline_reached | failed
- *     sujet,
- *     budget: { restant, max },
- *     temps:  { ecoule_s, max_s },
- *     sources:  [{ url, statut: "ok" | "en_cours" | "abandon" }],
- *     constats: [{ id, titre, resume, sources: string[] }],
- *     journal:  [{ ts, message }],
- *     erreur:   { code, message } | null
- *   }
- */
+// Contrat réel : voir API.md. Jeton conservé uniquement dans la mémoire de la page.
+let jetonMemoire = "";
+function adapterMission(m) {
+  const sources = m.sources || [];
+  const parId = new Map(sources.filter(s => s.source_id).map(s => [s.source_id, s.url]));
+  return {
+    id:m.id, statut:m.status, sujet:m.subject,
+    budget:{restant:m.actions_remaining,max:m.action_budget},
+    temps:{ecoule_s:m.elapsed_seconds,max_s:m.duration_seconds},
+    sources:sources.map(s=>({...s,statut:s.status === "ok" ? "ok" : "abandon"})),
+    constats:(m.findings||[]).map(f=>({id:f.finding_id,titre:f.title,resume:f.summary,
+      impact:f.developer_impact,date:f.event_date || "Date inconnue",
+      sources:(f.evidence||[]).map(e=>parId.get(e.source_id)||e.source_id)})),
+    journal:(m.events||[]).map(e=>({ts:e.at,message:e.kind+" — "+JSON.stringify(e.data)})),
+    erreur:m.error ? {message:m.error}:null, partielle:m.summary?.partial ?? true
+  };
+}
+async function requete(path, method="GET", body) {
+  const headers = {"Authorization":"Bearer "+jetonMemoire};
+  if(body) headers["Content-Type"]="application/json";
+  const r = await fetch(path,{method,headers,body:body ? JSON.stringify(body):undefined});
+  const data = await r.json();
+  if(!r.ok) {
+    const messages={401:"Jeton opérateur incorrect.",403:"Accès refusé.",409:"Une mission est déjà en cours.",503:"Configuration serveur incomplète. Vérifiez la clé Anthropic et le jeton opérateur."};
+    throw new Error(messages[r.status] || (typeof data.detail === "string" ? data.detail : "Paramètres invalides. Vérifiez le sujet, les domaines et les limites."));
+  }
+  return adapterMission(data);
+}
 const api = {
-  async creerMission(payload) {
-    const reponse = await fetch("/api/missions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!reponse.ok) throw new Error("echec_creation");
-    return reponse.json();
-  },
-
-  async obtenirMission(id) {
-    const reponse = await fetch(`/api/missions/${encodeURIComponent(id)}`);
-    if (!reponse.ok) throw new Error("echec_lecture");
-    return reponse.json();
-  },
-
-  async arreterMission(id) {
-    const reponse = await fetch(`/api/missions/${encodeURIComponent(id)}/arret`, {
-      method: "POST",
-    });
-    if (!reponse.ok) throw new Error("echec_arret");
-    return reponse.json();
-  },
+  creerMission(p) { return requete("/api/missions","POST",{subject:p.sujet,domains:p.domaines,action_budget:p.budget_max,duration_minutes:p.duree_max_minutes}); },
+  obtenirMission(id) { return requete("/api/missions/"+encodeURIComponent(id)); },
+  arreterMission(id) { return requete("/api/missions/"+encodeURIComponent(id)+"/stop","POST"); }
 };
 
 const LIBELLES_ETAT = {
@@ -116,6 +96,8 @@ const CIRCONFERENCE_ANNEAU = 2 * Math.PI * 52;
 let intervalleId = null;
 let missionCourante = null;
 let echecsConsecutifs = 0;
+let lancementEnCours = false;
+let lectureEnCours = false;
 
 // ---------- Effet de clic (ondulation) ----------
 
@@ -196,7 +178,8 @@ function validerFormulaire() {
 
   const erreurs = [];
 
-  if (!sujet) erreurs.push("Le sujet est obligatoire.");
+  if (!sujet || sujet.length > 500) erreurs.push("Le sujet doit contenir entre 1 et 500 caractères.");
+  if (document.getElementById("jeton-operateur").value.trim().length < 32) erreurs.push("Jeton opérateur requis.");
 
   if (domaines.some((d) => !d)) {
     erreurs.push("Chaque domaine autorisé doit être renseigné.");
@@ -206,16 +189,16 @@ function validerFormulaire() {
     erreurs.push("Les domaines autorisés doivent être différents les uns des autres.");
   }
 
-  if (!Number.isInteger(budget) || budget < 1) {
+  if (!Number.isInteger(budget) || budget < 1 || budget > 100) {
     erreurs.push("Le budget d'actions doit être un entier positif.");
   }
 
-  if (!Number.isInteger(duree) || duree < 1) {
+  if (!Number.isInteger(duree) || duree < 1 || duree > 30) {
     erreurs.push("La durée maximale doit être un entier positif, en minutes.");
   }
 
   const valide = erreurs.length === 0;
-  els.boutonLancer.disabled = !valide;
+  els.boutonLancer.disabled = !valide || lancementEnCours;
   els.erreurFormulaire.hidden = true;
 
   return { valide, sujet, domaines, budget, duree };
@@ -227,8 +210,9 @@ els.nombreDomaines.addEventListener("change", regenererChampsDomaines);
 els.formLancement.addEventListener("submit", async (evenement) => {
   evenement.preventDefault();
   const { valide, sujet, domaines, budget, duree } = validerFormulaire();
-  if (!valide) return;
-
+  if (!valide || lancementEnCours) return;
+  lancementEnCours = true;
+  jetonMemoire = document.getElementById("jeton-operateur").value.trim();
   els.boutonLancer.disabled = true;
 
   try {
@@ -241,10 +225,10 @@ els.formLancement.addEventListener("submit", async (evenement) => {
     demarrerSuiviMission(mission);
   } catch (erreur) {
     els.erreurFormulaire.textContent =
-      "Impossible de lancer la recherche pour l'instant. Le service est peut-être indisponible.";
+      erreur.message;
     els.erreurFormulaire.hidden = false;
     els.boutonLancer.disabled = false;
-  }
+  } finally { lancementEnCours = false; }
 });
 
 // ---------- Écran de recherche ----------
@@ -259,6 +243,7 @@ function afficherEcranAccueil() {
   els.ecranRecherche.hidden = true;
   els.ecranAccueil.hidden = false;
   els.formLancement.reset();
+  document.getElementById("jeton-operateur").value = jetonMemoire;
   regenererChampsDomaines();
   els.boutonLancer.disabled = true;
 }
@@ -293,6 +278,8 @@ function synchroniserListe(conteneur, items, cleDe, creerNoeud, mettreAJourNoeud
   for (const enfant of Array.from(conteneur.children)) {
     existants.set(enfant.dataset.cle, enfant);
   }
+  const nouvellesCles = new Set(items.map((item,index)=>String(cleDe(item,index))));
+  for (const [cle,noeud] of existants) if (!nouvellesCles.has(cle)) noeud.remove();
   items.forEach((item, index) => {
     const cle = String(cleDe(item, index));
     const noeudExistant = existants.get(cle);
@@ -345,7 +332,7 @@ function creerNoeudConstat(constat) {
   titre.textContent = constat.titre;
 
   const resume = document.createElement("p");
-  resume.textContent = constat.resume;
+  resume.textContent = constat.resume + "\nIntérêt pratique : " + (constat.impact || "") + "\n" + constat.date;
 
   const sourcesConstat = document.createElement("p");
   sourcesConstat.className = "constat-sources";
@@ -405,7 +392,7 @@ function rendreMission(mission) {
     "deadline_reached",
     "failed",
   ]);
-  const partielle = statutsNonAboutis.has(mission.statut) || sourcesAbandonnees;
+  const partielle = mission.partielle;
   els.synthesePartielle.hidden = !partielle;
 
   els.syntheseVide.hidden = constats.length !== 0;
@@ -429,6 +416,7 @@ function rendreMission(mission) {
     els.bandeauErreur.hidden = true;
   }
 
+  els.boutonNouvelleRecherche.disabled = !ETATS_TERMINAUX.has(mission.statut);
   const enCours = mission.statut === "running" || mission.statut === "pending";
   els.boutonArret.hidden = !enCours && mission.statut !== "stopping";
   els.boutonArret.disabled = mission.statut === "stopping";
@@ -445,7 +433,7 @@ function demarrerSuiviMission(mission) {
   els.journalListe.innerHTML = "";
   afficherEcranRecherche(mission.sujet);
   rendreMission(mission);
-  demarrerRafraichissement();
+  if (!ETATS_TERMINAUX.has(mission.statut)) demarrerRafraichissement();
 }
 
 function demarrerRafraichissement() {
@@ -461,9 +449,12 @@ function arreterRafraichissement() {
 }
 
 async function rafraichirMission() {
-  if (!missionCourante) return;
+  if (!missionCourante || lectureEnCours) return;
+  const identifiant = missionCourante.id;
+  lectureEnCours = true;
   try {
-    const mission = await api.obtenirMission(missionCourante.id);
+    const mission = await api.obtenirMission(identifiant);
+    if (missionCourante?.id !== identifiant) return;
     missionCourante = mission;
     echecsConsecutifs = 0;
     els.bandeauConnexion.hidden = true;
@@ -473,7 +464,7 @@ async function rafraichirMission() {
     if (echecsConsecutifs >= 2) {
       els.bandeauConnexion.hidden = false;
     }
-  }
+  } finally { lectureEnCours = false; }
 }
 
 els.boutonArret.addEventListener("click", async () => {
@@ -490,6 +481,7 @@ els.boutonArret.addEventListener("click", async () => {
 });
 
 els.boutonNouvelleRecherche.addEventListener("click", () => {
+  if (missionCourante && !ETATS_TERMINAUX.has(missionCourante.statut)) return;
   arreterRafraichissement();
   missionCourante = null;
   afficherEcranAccueil();
