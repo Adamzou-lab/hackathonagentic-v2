@@ -62,3 +62,9 @@ On peut remplacer `search_web` par `read_page` ou `save_finding`. Le réglage ap
 Les tests n’appellent pas Anthropic : ils utilisent des décisions et des réponses de transport contrôlées pour vérifier les refus, l’arrêt, la reprise après une erreur récupérable, les budgets et la fermeture de chaque trace d’appel. Ils complètent une recherche réelle ; ils ne la remplacent pas.
 
 Le bonus streaming reste le lot de Claude et Panaki. Le polling actuel et les tests de boucle ne suffisent pas à déclarer ce bonus acquis.
+
+## Vérification effectuée le 7 septembre 2026
+
+- Suite automatisée : **34 tests réussis**, sans consommation API.
+- Essai avec le vrai fournisseur Anthropic et les lecteurs réseau, limité à 6 actions et 2 minutes : **5 actions, 7 appels modèle, 11 requêtes réseau, 3 sources et 1 constat enregistré**.
+- L’essai s’est terminé en **`failed` / `timeout`** lors d’une décision du modèle, après ces résultats. Le constat et les sources figurent toujours dans l’état final. Cet essai prouve une exécution réelle et un échec explicite ; il ne constitue pas une exécution terminée avec succès.
