@@ -5,6 +5,8 @@
 # ensuite : chaque couche est conservee. C'est la meme logique qu'un secret
 # pousse dans un historique Git.
 .env
+.lockin/
+.lockin-secret-*
 .env.*
 !.env.example
 *.pem

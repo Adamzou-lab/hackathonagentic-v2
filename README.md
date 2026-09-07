@@ -37,7 +37,7 @@ Dans la page ouverte :
 
 1. Saisir **« Nouveautés sur les agents IA chez Anthropic »**.
 2. Ajouter le domaine **www.anthropic.com**, choisir **10 actions** et **2 minutes**.
-3. Ouvrir le fichier **.env** créé à la racine du projet et copier la valeur de **LOCKIN_ACCESS_TOKEN** dans le champ « jeton opérateur ». La clé Anthropic reste côté serveur.
+3. Ouvrir **.lockin/operator-token.txt** et copier son contenu dans le champ « jeton opérateur ». Ce fichier contient uniquement le jeton de connexion, jamais la clé Anthropic. Inutile d’ouvrir .env pendant la démonstration.
 4. Cliquer sur **Lancer**, observer le journal et les résultats, puis tester **Arrêter l’agent**.
 
 Les recherches réelles consomment du crédit Anthropic. Une recherche peut finir sans constat exploitable : le journal permet de comprendre son déroulement.
@@ -60,7 +60,7 @@ Sous Windows : `py start.py --demo`. Le bandeau indique les **données simulées
 | Installation des dépendances en échec | Vérifier Internet et relancer la même commande. Sous Linux, installer le paquet venv correspondant à votre Python si nécessaire. |
 | Le navigateur ne s’ouvre pas | Ouvrir http://127.0.0.1:8000/ manuellement. |
 | Port déjà occupé | Lancer `python3 start.py --port 8001` (Windows : `py start.py --port 8001`). |
-| Jeton incorrect (401) | Copier la valeur exacte de LOCKIN_ACCESS_TOKEN dans .env. |
+| Jeton incorrect (401) | Copier le contenu de .lockin/operator-token.txt après lancement. |
 | Clé fournisseur refusée | Corriger ANTHROPIC_API_KEY dans .env, vérifier crédit et accès à la recherche web, puis relancer. |
 | Une mission existe déjà (409) | L’arrêter depuis son écran ou attendre son échéance. |
 | Page refusée | Vérifier l’hôte exact autorisé ; robots.txt et les redirections peuvent entraîner un refus. |

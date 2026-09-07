@@ -7,11 +7,25 @@ import secrets
 import subprocess
 import sys
 import threading
+import tempfile
 import urllib.request
 import venv
+import warnings
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
+
+
+def write_private(path, content):
+    """Crée le fichier avec des droits privés avant d'y écrire un secret."""
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=".lockin-secret-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(content)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
 
 
 def read_config(path):
@@ -42,7 +56,13 @@ def main():
     key = os.environ.get("ANTHROPIC_API_KEY") or config.get("ANTHROPIC_API_KEY", "")
     if not args.demo and (not key or "REMPLACER" in key):
         print("Clé API Anthropic requise pour une vraie recherche (saisie masquée).")
-        key = getpass.getpass("Clé Anthropic : ").strip()
+        # Refuser une saisie visible si le terminal ne permet pas le masquage.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            try:
+                key = getpass.getpass("Clé Anthropic : ").strip()
+            except getpass.GetPassWarning:
+                parser.exit(1, "Ouvrez un terminal interactif pour saisir la clé de façon masquée.\n")
         if not key or "\n" in key or "\r" in key:
             parser.exit(1, "Clé vide ou invalide. Pour un aperçu sans clé : ajouter --demo.\n")
         updates["ANTHROPIC_API_KEY"] = key
@@ -51,15 +71,18 @@ def main():
         token = secrets.token_hex(32)
         updates["LOCKIN_ACCESS_TOKEN"] = token
     if not path.exists():
-        path.write_text("# Configuration locale Lockin — ne pas publier.\n", encoding="utf-8")
+        write_private(path, "# Configuration locale Lockin — ne pas publier.\n")
     if updates:
         # Conserve les autres paramètres et remplace uniquement les valeurs demandées.
         lines = path.read_text(encoding="utf-8").splitlines()
         lines = [line for line in lines if line.strip().partition("=")[0].strip() not in updates]
         lines.extend(f"{name}={value}" for name, value in updates.items())
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        write_private(path, "\n".join(lines) + "\n")
     if os.name != "nt":
         path.chmod(0o600)
+    token_dir = ROOT / ".lockin"
+    token_dir.mkdir(mode=0o700, exist_ok=True)
+    write_private(token_dir / "operator-token.txt", token + "\n")
 
     python = ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if not python.exists():
@@ -74,7 +97,7 @@ def main():
     url = f"http://127.0.0.1:{args.port}/" + ("?demo" if args.demo else "")
     print(f"3/3 — Démarrage : {url}", flush=True)
     if not args.demo:
-        print("Dans l’interface, collez LOCKIN_ACCESS_TOKEN depuis le fichier .env.", flush=True)
+        print("Dans l’interface, collez le jeton du fichier .lockin/operator-token.txt (aucune clé API dans ce fichier).", flush=True)
     print("Gardez ce terminal ouvert. Ctrl+C pour arrêter.", flush=True)
 
     def open_when_ready():
