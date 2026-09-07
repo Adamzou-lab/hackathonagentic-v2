@@ -48,7 +48,8 @@ C'est aussi le canal qui rend notre projet vulnérable le vendredi matin, pendan
 
 Notre réponse tient en trois points, et l'ordre compte.
 
-1. **Les contrôles du programme sont la protection décisive.** Le modèle propose une action, le serveur décide si elle est autorisée : domaine hors liste refusé, budget épuisé refusé, arrêt demandé refusé. Une page qui convainc le modèle n'obtient donc rien de plus qu'une page qui ne le convainc pas.
+1. **Les contrôles du programme sont la protection décisive.** Le modèle propose une action, le serveur décide si elle est autorisée : domaine hors liste refusé, budget épuisé refusé, arrêt demandé refusé. Une page qui convainc le modèle n'obtient donc **aucune permission supplémentaire** : elle ne peut ni faire sortir l'agent de la liste de domaines, ni dépasser le budget, ni annuler un arrêt.
+   Le risque résiduel n'est pas nul pour autant, et il faut savoir le dire. Une page persuasive peut encore orienter l'agent vers des actions pourtant autorisées, lui faire dépenser son budget sur des sources sans intérêt, ou polluer la synthèse finale. Le contrôle serveur borne ce qui est **possible**, pas ce qui est **pertinent**.
 2. **Le balisage réduit le risque, il ne le supprime pas.** Le contenu récupéré entre dans le modèle comme donnée explicitement marquée non fiable, séparée des instructions. Mais nous ne pouvons pas garantir qu'un modèle respectera toujours cette séparation. C'est exactement pour cette raison que ce point vient après le premier et non avant.
 3. **Nous signalons les tentatives que nous repérons, sans prétendre les repérer toutes.** Une suspicion est journalisée avec l'extrait qui l'a déclenchée, et la page est écartée du rapport. Nous ne promettons pas une détection complète. Nous promettons qu'aucune détection n'est nécessaire pour que le point 1 tienne.
 
@@ -64,5 +65,5 @@ Un modèle de menace honnête dit aussi où il s'arrête.
 
 Le checkpoint impose que l'un des deux explique ce document en entier, seul. Les deux points à maîtriser en priorité :
 
-- pourquoi le contenu d'une page ne peut jamais devenir une instruction, et où cette séparation est appliquée concrètement,
+- pourquoi une page ne peut pas élargir les permissions de l'agent, même lorsqu'elle influence ses décisions, et où cette limite est appliquée concrètement,
 - pourquoi l'ordre d'arrêt est stocké en base et pas gardé en mémoire.

@@ -1,0 +1,41 @@
+# Secrets. Seul .env.example est versionne, jamais un .env reel.
+# Rappel du brief : une cle d'API commitee coute 10 points, immediatement.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+build/
+npm-debug.log*
+
+# Journal et base locale du Metronome
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Artefacts d'execution de l'agent : pages recuperees, traces de mission
+runs/
+.cache/
+
+# Systeme et editeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
