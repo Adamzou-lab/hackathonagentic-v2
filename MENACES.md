@@ -31,6 +31,21 @@ Une seule source d'instructions existe : le prompt système que nous écrivons, 
 | Interrupteur d'arrêt | L'ordre d'arrêt est perdu, ou déclenché par erreur | Un agent qu'on ne peut pas arrêter, ce qui est le pire cas d'un sujet sur l'autonomie | L'arrêt est un état persisté en base, relu à chaque tour de boucle. Ce n'est pas un signal en mémoire qui disparaît si le processus redémarre |
 | Secrets et variables d'environnement | Une clé se retrouve dans le dépôt, dans le journal, ou dans le rapport | Exposition réelle de la clé, et 10 points retirés immédiatement par le barème | Seul `.env.example` est versionné. `.gitignore` vérifié avant le premier commit. Aucune valeur secrète n'est écrite dans le journal ni dans le rapport |
 
+## Ce que le palier 2 ajoute comme surface
+
+Au palier 1, l'agent n'existait que sur le papier, et les seuls canaux étaient ceux qui lui parlent pendant une mission. Le passage au code en ouvre d'autres, qui ne concernent plus le modèle mais le service lui-même.
+
+| Canal | Si ce canal est atteint ou ment | Conséquence | Ce que nous faisons |
+| --- | --- | --- | --- |
+| **L'API HTTP** | Quelqu'un joint le port sans être l'opérateur | Il lance des missions à notre place, consomme nos budgets et nos quotas, arrête une mission en cours, ou lit nos journaux | Par défaut le service n'est publié que sur la machine locale. Toute mise en ligne publique, y compris pour la carte bonus « déployé tôt », exige d'abord un secret partagé sur les routes d'écriture, décidé avec `API.md`. Tant que ce n'est pas en place, on ne publie pas |
+| **L'interface web servie par le backend** | Un constat contient du texte hostile récupéré sur une page | Ce que l'agent a lu s'exécute dans le navigateur de celui qui lit le rapport. La collecte devient un vecteur | Le contenu récupéré est rendu comme texte échappé, jamais interprété comme du HTML. La règle vient de `OUTILS.md` ; c'est à l'affichage qu'elle se vérifie |
+| **Le fichier `.env`** | Il part dans le dépôt ou dans l'image | Clés exposées, et 10 points retirés au barème | Exclu à la fois par `.gitignore` et par `.dockerignore`. Seul `.env.example` est versionné. Les deux règles sont testées, pas supposées |
+| **L'image Docker** | Un secret a été copié dans une couche | Le supprimer après coup ne suffit pas, chaque couche est conservée. Même logique qu'un secret poussé dans un historique Git | Rien de sensible n'entre par `COPY` ; la configuration arrive au démarrage par `env_file` |
+| **Le volume `./data`** | Quelqu'un a accès à la machine hôte | Il lit les journaux, donc les sujets veillés et les sources consultées | Nous ne prétendons pas nous en protéger, c'est déjà dans nos limites assumées. Le volume reste nécessaire : sans lui, aucun journal ne survit à un redémarrage, et la reconstruction d'état perd son support |
+| **Le conteneur** | Une faille permet d'exécuter du code | Ce qui devient atteignable dépend des droits du processus | L'image tourne sous un utilisateur sans privilèges, pas sous root |
+
+Le point à retenir pour l'oral : le palier 2 déplace une partie du modèle de menace du modèle de langage vers le service. À la question « qui peut parler à votre agent », il y a désormais une réponse de plus, et c'est « quiconque atteint le port ».
+
 ## Deux listes à ne pas confondre
 
 Une question tombera au checkpoint : si l'agent ne sort pas de la liste de domaines autorisée, comment joint-il son moteur de recherche ?
