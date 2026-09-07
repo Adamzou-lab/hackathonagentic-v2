@@ -1,0 +1,47 @@
+# Ce fichier decide de ce qui entre dans l'image. Deux enjeux : ne jamais y
+# faire entrer un secret, et garder le contexte de build petit.
+
+# Secrets. Un .env copie dans une image y reste, meme si on le supprime
+# ensuite : chaque couche est conservee. C'est la meme logique qu'un secret
+# pousse dans un historique Git.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Donnees locales : le journal et la base d'une execution precedente n'ont
+# rien a faire dans l'image. Ils arrivent par le volume, au demarrage.
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Historique et outillage Git
+.git
+.gitignore
+.github
+
+# Artefacts Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Artefacts Node, si l'interface en utilise un jour
+node_modules/
+dist/
+build/
+
+# Systeme et editeurs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
