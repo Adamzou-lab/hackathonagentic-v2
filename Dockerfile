@@ -26,5 +26,5 @@ USER lockin
 
 EXPOSE 8000
 
-# TODO a confirmer avec Codex : point d'entree ASGI et port d'ecoute reels.
+# Un seul worker : une seule mission active par serveur.
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

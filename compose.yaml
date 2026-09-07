@@ -19,7 +19,7 @@ services:
       # Sans ce volume, un redemarrage effacerait le journal d'une mission,
       # et reconstituer l'etat d'un agent arrete deviendrait impossible.
       # C'est la promesse centrale du sujet, donc ce volume n'est pas optionnel.
-      - ./data:/app/data
+      - lockin_data:/app/data
     restart: unless-stopped
     healthcheck:
       # /health est public et ne prouve que la reponse du serveur, pas la
@@ -30,3 +30,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  lockin_data:
