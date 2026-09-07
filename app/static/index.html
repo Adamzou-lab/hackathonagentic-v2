@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lockin</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+  <!-- Écran 1 : accueil. Visible avant tout lancement. -->
+  <main id="ecran-accueil" class="ecran ecran-accueil">
+    <div class="accueil-centre">
+      <h1 class="marque">Lockin</h1>
+      <p class="sous-titre">Un agent explore vos sources pendant que vous faites autre chose.</p>
+
+      <form id="form-lancement" class="form-lancement" novalidate>
+        <div class="champ">
+          <label for="champ-sujet">Quel sujet souhaitez-vous explorer&nbsp;?</label>
+          <input type="text" maxlength="500" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" required />
+        </div>
+
+        <div class="champ">
+          <label for="nombre-domaines">Nombre de domaines autorisés</label>
+          <select id="nombre-domaines" name="nombre-domaines">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+
+        <div id="domaines-conteneur" class="domaines-conteneur">
+          <!-- Champs de domaines générés par app.js selon le sélecteur ci-dessus -->
+        </div>
+
+        <div class="champ">
+          <label for="jeton-operateur">Accès à Lockin</label>
+          <input type="password" id="jeton-operateur" autocomplete="off" placeholder="Jeton opérateur" />
+          <p class="aide">Le jeton d’accès à votre instance, jamais votre clé Anthropic.</p>
+        </div>
+        <div class="champ champ-double">
+          <div class="sous-champ">
+            <label for="champ-budget">Budget d'actions</label>
+            <input type="number" id="champ-budget" name="budget" min="1" max="100" step="1" value="100" required />
+            <p class="aide">Tentatives d'outils : recherche, lecture, sauvegarde — y compris les échecs.</p>
+          </div>
+          <div class="sous-champ">
+            <label for="champ-duree">Durée maximale (minutes)</label>
+            <input type="number" id="champ-duree" name="duree" min="1" max="30" step="1" value="30" required />
+            <p class="aide">L'agent s'arrête au premier des deux atteint : budget ou durée.</p>
+          </div>
+        </div>
+
+        <p id="erreur-formulaire" class="erreur-formulaire" role="alert" hidden></p>
+
+        <button type="submit" id="bouton-lancer" class="bouton bouton-principal" disabled>
+          Lancer la recherche
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Écran 2 : recherche en cours / terminée. Masqué avant lancement. -->
+  <div id="barre-activite" class="barre-activite" aria-hidden="true"></div>
+  <main id="ecran-recherche" class="ecran ecran-recherche" hidden>
+    <header class="recherche-entete">
+      <h1 class="marque marque-petite">Lockin</h1>
+      <div class="sujet-affiche">
+        <span class="sujet-label">Sujet</span>
+        <span id="sujet-valeur" class="sujet-valeur"></span>
+      </div>
+      <span id="etat-badge" class="etat-badge" aria-live="polite">En attente</span>
+    </header>
+
+    <section class="anneaux" aria-label="Ressources consommées">
+      <div id="anneau-budget-bloc" class="anneau-bloc">
+        <svg viewBox="0 0 120 120" class="anneau" role="img" aria-label="Budget consommé">
+          <circle class="anneau-fond" cx="60" cy="60" r="52" />
+          <circle id="anneau-budget-cercle" class="anneau-valeur anneau-valeur-budget" cx="60" cy="60" r="52" />
+        </svg>
+        <div class="anneau-texte">
+          <span id="anneau-budget-valeur" class="anneau-nombre">0 / 0</span>
+          <span class="anneau-legende">actions</span>
+        </div>
+      </div>
+      <div id="anneau-temps-bloc" class="anneau-bloc">
+        <svg viewBox="0 0 120 120" class="anneau" role="img" aria-label="Temps écoulé">
+          <circle class="anneau-fond" cx="60" cy="60" r="52" />
+          <circle id="anneau-temps-cercle" class="anneau-valeur anneau-valeur-temps" cx="60" cy="60" r="52" />
+        </svg>
+        <div class="anneau-texte">
+          <span id="anneau-temps-valeur" class="anneau-nombre">0 / 0</span>
+          <span class="anneau-legende">minutes</span>
+        </div>
+      </div>
+    </section>
+
+    <p id="bandeau-connexion" class="bandeau bandeau-connexion" role="status" hidden>
+      Connexion au serveur perdue, nouvelle tentative…
+    </p>
+
+    <p id="bandeau-erreur" class="bandeau bandeau-erreur" role="alert" hidden></p>
+
+    <div class="actions-controle">
+      <button type="button" id="bouton-arret" class="bouton bouton-danger">Arrêter l'agent</button>
+    </div>
+
+    <section class="colonnes">
+      <div class="colonne">
+        <h2>Sources consultées</h2>
+        <ul id="liste-sources" class="liste-sources"></ul>
+      </div>
+
+      <div class="colonne">
+        <h2>Synthèse<span id="synthese-partielle" class="etiquette-partielle" hidden>partielle</span></h2>
+        <div id="synthese-vide" class="synthese-vide" hidden>Aucune nouveauté pertinente trouvée pour l'instant.</div>
+        <ol id="liste-constats" class="liste-constats"></ol>
+      </div>
+    </section>
+
+    <details id="journal" class="journal">
+      <summary>Journal (<span id="journal-compteur">0</span> événements)</summary>
+      <ol id="journal-liste" class="journal-liste"></ol>
+    </details>
+
+    <p class="recommencer">
+      <button type="button" id="bouton-nouvelle-recherche" class="bouton bouton-lien">Lancer une nouvelle recherche</button>
+    </p>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
+
