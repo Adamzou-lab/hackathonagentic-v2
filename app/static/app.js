@@ -89,8 +89,11 @@ const els = {
 
   sujetValeur: document.getElementById("sujet-valeur"),
   etatBadge: document.getElementById("etat-badge"),
+  barreActivite: document.getElementById("barre-activite"),
+  anneauBudgetBloc: document.getElementById("anneau-budget-bloc"),
   anneauBudgetCercle: document.getElementById("anneau-budget-cercle"),
   anneauBudgetValeur: document.getElementById("anneau-budget-valeur"),
+  anneauTempsBloc: document.getElementById("anneau-temps-bloc"),
   anneauTempsCercle: document.getElementById("anneau-temps-cercle"),
   anneauTempsValeur: document.getElementById("anneau-temps-valeur"),
   bandeauConnexion: document.getElementById("bandeau-connexion"),
@@ -113,6 +116,35 @@ const CIRCONFERENCE_ANNEAU = 2 * Math.PI * 52;
 let intervalleId = null;
 let missionCourante = null;
 let echecsConsecutifs = 0;
+
+// ---------- Effet de clic (ondulation) ----------
+
+function declencherOndulation(bouton, evenement) {
+  const precedente = bouton.querySelector(".ondulation");
+  if (precedente) precedente.remove();
+
+  const rect = bouton.getBoundingClientRect();
+  const taille = Math.max(rect.width, rect.height) * 1.6;
+  const x = (evenement.clientX ?? rect.left + rect.width / 2) - rect.left;
+  const y = (evenement.clientY ?? rect.top + rect.height / 2) - rect.top;
+
+  const onde = document.createElement("span");
+  onde.className = "ondulation";
+  onde.style.width = `${taille}px`;
+  onde.style.height = `${taille}px`;
+  onde.style.left = `${x - taille / 2}px`;
+  onde.style.top = `${y - taille / 2}px`;
+
+  bouton.appendChild(onde);
+  onde.addEventListener("animationend", () => onde.remove(), { once: true });
+}
+
+document.querySelectorAll(".bouton").forEach((bouton) => {
+  bouton.addEventListener("pointerdown", (evenement) => {
+    if (bouton.disabled) return;
+    declencherOndulation(bouton, evenement);
+  });
+});
 
 // ---------- Formulaire de lancement ----------
 
@@ -243,42 +275,125 @@ function definirAnneau(cercle, ratio) {
   cercle.style.strokeDashoffset = `${CIRCONFERENCE_ANNEAU * (1 - r)}`;
 }
 
+function definirTexteAvecEclat(el, texte) {
+  if (el.textContent === texte) return;
+  el.textContent = texte;
+  el.classList.remove("valeur-maj");
+  void el.offsetWidth; // relance l'animation même si la classe était déjà posée
+  el.classList.add("valeur-maj");
+}
+
+// Synchronise une liste DOM append-only avec un tableau de données, sans
+// tout reconstruire à chaque appel : seules les entrées nouvelles sont
+// créées (et animées), les entrées déjà affichées sont mises à jour en
+// place. Nécessaire pour que le journal, les sources et les constats
+// restent lisibles pendant un rafraîchissement toutes les secondes.
+function synchroniserListe(conteneur, items, cleDe, creerNoeud, mettreAJourNoeud) {
+  const existants = new Map();
+  for (const enfant of Array.from(conteneur.children)) {
+    existants.set(enfant.dataset.cle, enfant);
+  }
+  items.forEach((item, index) => {
+    const cle = String(cleDe(item, index));
+    const noeudExistant = existants.get(cle);
+    if (noeudExistant) {
+      mettreAJourNoeud(noeudExistant, item);
+    } else {
+      const noeud = creerNoeud(item);
+      noeud.dataset.cle = cle;
+      noeud.classList.add("entree-nouvelle");
+      conteneur.appendChild(noeud);
+    }
+  });
+}
+
+function libelleStatutSource(statut) {
+  return statut === "ok" ? "ok" : statut === "en_cours" ? "en cours" : "abandon";
+}
+
+function creerNoeudSource(source) {
+  const li = document.createElement("li");
+  const url = document.createElement("span");
+  url.className = "source-url";
+  const statut = document.createElement("span");
+  statut.className = "source-statut";
+  li.appendChild(url);
+  li.appendChild(statut);
+  mettreAJourNoeudSource(li, source);
+  return li;
+}
+
+function mettreAJourNoeudSource(li, source) {
+  const url = li.querySelector(".source-url");
+  const statut = li.querySelector(".source-statut");
+  url.textContent = source.url;
+  url.title = source.url;
+  if (statut.dataset.statut !== source.statut) {
+    statut.dataset.statut = source.statut;
+    statut.textContent = libelleStatutSource(source.statut);
+    statut.classList.remove("statut-maj");
+    void statut.offsetWidth;
+    statut.classList.add("statut-maj");
+  }
+}
+
+function creerNoeudConstat(constat) {
+  const li = document.createElement("li");
+
+  const titre = document.createElement("p");
+  titre.className = "constat-titre";
+  titre.textContent = constat.titre;
+
+  const resume = document.createElement("p");
+  resume.textContent = constat.resume;
+
+  const sourcesConstat = document.createElement("p");
+  sourcesConstat.className = "constat-sources";
+  sourcesConstat.textContent = `Sources : ${(constat.sources || []).join(", ")}`;
+
+  li.appendChild(titre);
+  li.appendChild(resume);
+  li.appendChild(sourcesConstat);
+  return li;
+}
+
+function creerNoeudJournal(entree) {
+  const li = document.createElement("li");
+  li.textContent = `${entree.ts}  ${entree.message}`;
+  return li;
+}
+
 function rendreMission(mission) {
   const libelle = LIBELLES_ETAT[mission.statut] || mission.statut;
   els.etatBadge.textContent = libelle;
   els.etatBadge.dataset.etat = mission.statut;
 
+  const missionActive =
+    mission.statut === "pending" || mission.statut === "running" || mission.statut === "stopping";
+  els.barreActivite.classList.toggle("barre-activite-active", missionActive);
+  els.anneauBudgetBloc.classList.toggle("anneau-actif", missionActive);
+  els.anneauTempsBloc.classList.toggle("anneau-actif", missionActive);
+
   const budget = mission.budget || { restant: 0, max: 0 };
   const budgetUtilise = budget.max - budget.restant;
-  els.anneauBudgetValeur.textContent = `${budgetUtilise} / ${budget.max}`;
+  definirTexteAvecEclat(els.anneauBudgetValeur, `${budgetUtilise} / ${budget.max}`);
   definirAnneau(els.anneauBudgetCercle, budget.max ? budgetUtilise / budget.max : 0);
 
   const temps = mission.temps || { ecoule_s: 0, max_s: 0 };
-  els.anneauTempsValeur.textContent = `${formaterTemps(temps.ecoule_s)} / ${formaterTemps(
-    temps.max_s
-  )}`;
+  definirTexteAvecEclat(
+    els.anneauTempsValeur,
+    `${formaterTemps(temps.ecoule_s)} / ${formaterTemps(temps.max_s)}`
+  );
   definirAnneau(els.anneauTempsCercle, temps.max_s ? temps.ecoule_s / temps.max_s : 0);
 
   const sources = mission.sources || [];
-  els.listeSources.innerHTML = "";
-  for (const source of sources) {
-    const li = document.createElement("li");
-
-    const url = document.createElement("span");
-    url.className = "source-url";
-    url.textContent = source.url;
-    url.title = source.url;
-
-    const statut = document.createElement("span");
-    statut.className = "source-statut";
-    statut.dataset.statut = source.statut;
-    statut.textContent =
-      source.statut === "ok" ? "ok" : source.statut === "en_cours" ? "en cours" : "abandon";
-
-    li.appendChild(url);
-    li.appendChild(statut);
-    els.listeSources.appendChild(li);
-  }
+  synchroniserListe(
+    els.listeSources,
+    sources,
+    (source) => source.url,
+    creerNoeudSource,
+    mettreAJourNoeudSource
+  );
 
   const constats = mission.constats || [];
   const sourcesAbandonnees = sources.some((s) => s.statut === "abandon");
@@ -293,40 +408,19 @@ function rendreMission(mission) {
   const partielle = statutsNonAboutis.has(mission.statut) || sourcesAbandonnees;
   els.synthesePartielle.hidden = !partielle;
 
-  els.listeConstats.innerHTML = "";
-  if (constats.length === 0) {
-    els.syntheseVide.hidden = false;
-  } else {
-    els.syntheseVide.hidden = true;
-    for (const constat of constats) {
-      const li = document.createElement("li");
-
-      const titre = document.createElement("p");
-      titre.className = "constat-titre";
-      titre.textContent = constat.titre;
-
-      const resume = document.createElement("p");
-      resume.textContent = constat.resume;
-
-      const sourcesConstat = document.createElement("p");
-      sourcesConstat.className = "constat-sources";
-      sourcesConstat.textContent = `Sources : ${(constat.sources || []).join(", ")}`;
-
-      li.appendChild(titre);
-      li.appendChild(resume);
-      li.appendChild(sourcesConstat);
-      els.listeConstats.appendChild(li);
-    }
-  }
+  els.syntheseVide.hidden = constats.length !== 0;
+  synchroniserListe(
+    els.listeConstats,
+    constats,
+    (constat, index) => constat.id ?? index,
+    creerNoeudConstat,
+    () => {}
+  );
 
   const journal = mission.journal || [];
   els.journalCompteur.textContent = String(journal.length);
-  els.journalListe.innerHTML = "";
-  for (const entree of journal) {
-    const li = document.createElement("li");
-    li.textContent = `${entree.ts}  ${entree.message}`;
-    els.journalListe.appendChild(li);
-  }
+  synchroniserListe(els.journalListe, journal, (_entree, index) => index, creerNoeudJournal, () => {});
+  els.journalListe.scrollTop = els.journalListe.scrollHeight;
 
   if (mission.statut === "failed" && mission.erreur) {
     els.bandeauErreur.textContent = `Erreur : ${mission.erreur.message}`;
@@ -346,6 +440,9 @@ function rendreMission(mission) {
 
 function demarrerSuiviMission(mission) {
   missionCourante = mission;
+  els.listeSources.innerHTML = "";
+  els.listeConstats.innerHTML = "";
+  els.journalListe.innerHTML = "";
   afficherEcranRecherche(mission.sujet);
   rendreMission(mission);
   demarrerRafraichissement();

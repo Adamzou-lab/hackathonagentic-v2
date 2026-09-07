@@ -58,6 +58,7 @@
   </main>
 
   <!-- Écran 2 : recherche en cours / terminée. Masqué avant lancement. -->
+  <div id="barre-activite" class="barre-activite" aria-hidden="true"></div>
   <main id="ecran-recherche" class="ecran ecran-recherche" hidden>
     <header class="recherche-entete">
       <h1 class="marque marque-petite">Lockin</h1>
@@ -69,7 +70,7 @@
     </header>
 
     <section class="anneaux" aria-label="Ressources consommées">
-      <div class="anneau-bloc">
+      <div id="anneau-budget-bloc" class="anneau-bloc">
         <svg viewBox="0 0 120 120" class="anneau" role="img" aria-label="Budget consommé">
           <circle class="anneau-fond" cx="60" cy="60" r="52" />
           <circle id="anneau-budget-cercle" class="anneau-valeur anneau-valeur-budget" cx="60" cy="60" r="52" />
@@ -79,7 +80,7 @@
           <span class="anneau-legende">actions</span>
         </div>
       </div>
-      <div class="anneau-bloc">
+      <div id="anneau-temps-bloc" class="anneau-bloc">
         <svg viewBox="0 0 120 120" class="anneau" role="img" aria-label="Temps écoulé">
           <circle class="anneau-fond" cx="60" cy="60" r="52" />
           <circle id="anneau-temps-cercle" class="anneau-valeur anneau-valeur-temps" cx="60" cy="60" r="52" />

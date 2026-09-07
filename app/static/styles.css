@@ -1,16 +1,21 @@
 :root {
   --couleur-fond: #ffffff;
+  --couleur-fond-page: #f4f7fc;
   --couleur-texte: #202124;
   --couleur-texte-doux: #5f6368;
   --couleur-bordure: #dadce0;
   --couleur-accent: #1a73e8;
+  --couleur-accent-clair: #4c94f0;
   --couleur-accent-fonce: #174ea6;
   --couleur-danger: #d93025;
   --couleur-danger-fond: #fce8e6;
   --couleur-succes: #188038;
   --couleur-attention: #e37400;
   --couleur-attention-fond: #fef7e0;
-  --rayon: 8px;
+  --degrade-accent: linear-gradient(135deg, var(--couleur-accent), var(--couleur-accent-clair));
+  --ombre-carte: 0 1px 2px rgba(32, 33, 36, 0.06), 0 6px 20px rgba(32, 33, 36, 0.08);
+  --ombre-carte-forte: 0 4px 10px rgba(32, 33, 36, 0.08), 0 12px 32px rgba(32, 33, 36, 0.12);
+  --rayon: 10px;
   font-size: 16px;
 }
 
@@ -20,14 +25,35 @@
 
 body {
   margin: 0;
-  background: var(--couleur-fond);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(26, 115, 232, 0.10), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(24, 128, 56, 0.06), transparent 40%),
+    var(--couleur-fond-page);
   color: var(--couleur-texte);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .ecran {
   min-height: 100vh;
   padding: 24px;
+  animation: apparition 0.4s ease both;
+}
+
+.ecran[hidden] {
+  display: none !important;
+}
+
+@keyframes apparition {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ---------- Écran d'accueil ---------- */
@@ -46,10 +72,14 @@ body {
 
 .marque {
   font-size: 2.75rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   margin: 0 0 8px;
-  color: var(--couleur-texte);
+  background: var(--degrade-accent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
 }
 
 .sous-titre {
@@ -59,9 +89,11 @@ body {
 
 .form-lancement {
   text-align: left;
+  background: var(--couleur-fond);
   border: 1px solid var(--couleur-bordure);
-  border-radius: var(--rayon);
-  padding: 24px;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: var(--ombre-carte);
 }
 
 .champ {
@@ -95,12 +127,17 @@ select {
   font-family: inherit;
   color: var(--couleur-texte);
   background: var(--couleur-fond);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 input:focus,
 select:focus {
   outline: 2px solid var(--couleur-accent);
   outline-offset: 1px;
+}
+
+.domaine-champ {
+  animation: apparition 0.25s ease both;
 }
 
 .aide {
@@ -128,6 +165,8 @@ select:focus {
 }
 
 .bouton {
+  position: relative;
+  overflow: hidden;
   display: inline-block;
   border: none;
   border-radius: var(--rayon);
@@ -136,6 +175,7 @@ select:focus {
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  transition: background-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 .bouton:disabled {
@@ -143,14 +183,37 @@ select:focus {
   opacity: 0.5;
 }
 
+.bouton:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.ondulation {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  transform: scale(0);
+  pointer-events: none;
+  animation: onde 0.6s ease-out;
+}
+
+@keyframes onde {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
 .bouton-principal {
   width: 100%;
-  background: var(--couleur-accent);
+  background: var(--degrade-accent);
   color: #fff;
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.28);
 }
 
 .bouton-principal:not(:disabled):hover {
-  background: var(--couleur-accent-fonce);
+  box-shadow: 0 4px 14px rgba(26, 115, 232, 0.4);
+  transform: translateY(-1px);
 }
 
 .bouton-danger {
@@ -162,6 +225,8 @@ select:focus {
 .bouton-danger:not(:disabled):hover {
   background: var(--couleur-danger);
   color: #fff;
+  box-shadow: 0 4px 14px rgba(217, 48, 37, 0.3);
+  transform: translateY(-1px);
 }
 
 .bouton-lien {
@@ -214,6 +279,19 @@ select:focus {
   background: #e8eaed;
   color: var(--couleur-texte-doux);
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.etat-badge::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
 }
 
 .etat-badge[data-etat="pending"] { background: #e8eaed; color: var(--couleur-texte-doux); }
@@ -224,6 +302,44 @@ select:focus {
 .etat-badge[data-etat="budget_exhausted"] { background: var(--couleur-attention-fond); color: var(--couleur-attention); }
 .etat-badge[data-etat="deadline_reached"] { background: var(--couleur-attention-fond); color: var(--couleur-attention); }
 .etat-badge[data-etat="failed"] { background: var(--couleur-danger-fond); color: var(--couleur-danger); }
+
+.etat-badge[data-etat="running"]::before,
+.etat-badge[data-etat="stopping"]::before {
+  animation: clignotement 1.4s ease-in-out infinite;
+}
+
+@keyframes clignotement {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+.barre-activite {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 10;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--couleur-accent),
+    transparent
+  );
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.barre-activite.barre-activite-active {
+  opacity: 1;
+  animation: balayage 1.6s linear infinite;
+}
+
+@keyframes balayage {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 .anneaux {
   display: flex;
@@ -237,12 +353,26 @@ select:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 12px;
+  border-radius: 50%;
+  background: var(--couleur-fond);
+  box-shadow: var(--ombre-carte);
 }
 
 .anneau {
   width: 120px;
   height: 120px;
   transform: rotate(-90deg);
+  transition: filter 0.3s ease;
+}
+
+.anneau-bloc.anneau-actif .anneau {
+  animation: respiration 2.2s ease-in-out infinite;
+}
+
+@keyframes respiration {
+  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+  50% { filter: drop-shadow(0 0 6px var(--couleur-accent)); }
 }
 
 .anneau-fond {
@@ -278,6 +408,22 @@ select:focus {
   display: block;
   font-weight: 600;
   font-size: 1rem;
+  border-radius: 4px;
+}
+
+.anneau-nombre.valeur-maj {
+  animation: eclat-valeur 0.6s ease;
+}
+
+@keyframes eclat-valeur {
+  0% {
+    color: var(--couleur-accent);
+    transform: scale(1.18);
+  }
+  100% {
+    color: inherit;
+    transform: scale(1);
+  }
 }
 
 .anneau-legende {
@@ -344,8 +490,10 @@ select:focus {
   list-style: none;
   margin: 0;
   padding: 0;
+  background: var(--couleur-fond);
   border: 1px solid var(--couleur-bordure);
   border-radius: var(--rayon);
+  box-shadow: var(--ombre-carte);
   max-height: 320px;
   overflow-y: auto;
 }
@@ -357,6 +505,11 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.liste-sources li:hover {
+  background: var(--couleur-fond-page);
 }
 
 .liste-sources li:last-child {
@@ -382,6 +535,30 @@ select:focus {
 .source-statut[data-statut="en_cours"] { background: #e8f0fe; color: var(--couleur-accent); }
 .source-statut[data-statut="abandon"] { background: var(--couleur-danger-fond); color: var(--couleur-danger); }
 
+.source-statut.statut-maj {
+  animation: eclat-statut 0.6s ease;
+}
+
+@keyframes eclat-statut {
+  0% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+.entree-nouvelle {
+  animation: entree 0.35s ease both;
+}
+
+@keyframes entree {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .synthese-vide {
   color: var(--couleur-texte-doux);
   font-size: 0.875rem;
@@ -401,10 +578,18 @@ select:focus {
 }
 
 .liste-constats li {
+  background: var(--couleur-fond);
   border: 1px solid var(--couleur-bordure);
   border-radius: var(--rayon);
   padding: 12px;
   font-size: 0.875rem;
+  box-shadow: var(--ombre-carte);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.liste-constats li:hover {
+  box-shadow: var(--ombre-carte-forte);
+  transform: translateY(-1px);
 }
 
 .constat-titre {
@@ -419,10 +604,12 @@ select:focus {
 }
 
 .journal {
+  background: var(--couleur-fond);
   border: 1px solid var(--couleur-bordure);
   border-radius: var(--rayon);
   padding: 12px 16px;
   margin-bottom: 24px;
+  box-shadow: var(--ombre-carte);
 }
 
 .journal summary {
@@ -455,12 +642,16 @@ select:focus {
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --couleur-fond: #202124;
+    --couleur-fond: #292a2d;
+    --couleur-fond-page: #17181a;
     --couleur-texte: #e8eaed;
     --couleur-texte-doux: #9aa0a6;
     --couleur-bordure: #3c4043;
     --couleur-accent: #8ab4f8;
+    --couleur-accent-clair: #aecbfa;
     --couleur-accent-fonce: #aecbfa;
+    --ombre-carte: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
+    --ombre-carte-forte: 0 4px 10px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.45);
   }
 
   .anneau-fond {
@@ -469,5 +660,15 @@ select:focus {
 
   .bouton-principal {
     color: #202124;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
