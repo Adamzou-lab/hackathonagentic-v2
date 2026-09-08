@@ -16,6 +16,7 @@ from app.agent.discovery import DiscoveryInput, SelectionInput, normalize_candid
 from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
 from app.agent.failures import failure_code, must_stop
 from app.agent.evidence import passages
+from app.costs import estimate_request_cost
 
 
 class Halt(Exception):
@@ -80,18 +81,22 @@ class Engine:
 
     def reserve(self, mid, counter, limit, kind):
         d = self.guard(mid)
-        if counter == 'model_calls_used':
-            usage = self.store.snapshot(mid)['usage']
-            observed = usage.get('observed_tokens') or {}
-            spent = sum(observed.values())
-            ceiling = d.get('token_budget', 16000)
-            if spent >= ceiling:
-                self.store.save(d, 'token_budget_exhausted', {'tokens_observed': spent, 'token_budget': ceiling})
-                raise Halt('budget_exhausted')
         if d[counter] >= limit:
             raise Halt('budget_exhausted')
         d[counter] += 1
         self.store.save(d, kind, {counter:d[counter]})
+
+    def model_finished(self, data, usage, **fields):
+        """Persiste métriques et coût ensemble, après une réponse complète seulement."""
+        event = {'usage':usage, **fields}
+        cost = estimate_request_cost(getattr(self.provider, 'model', None), usage)
+        if cost:
+            data['last_request_cost'] = cost
+            if cost['amount_usd'] is not None:
+                data['total_estimated_cost_usd'] = round(
+                    data.get('total_estimated_cost_usd', 0) + cost['amount_usd'], 8)
+            event['request_cost'] = cost
+        self.store.save(data, 'model_finished', event)
 
     def end_operation(self, mid, outcome, code=None):
         d = self.store.get(mid)
@@ -276,7 +281,7 @@ class Engine:
                 raise ToolFailure('source_discovery_no_candidates')
             d = self.guard(mid)
             d['source_candidates'] = checked
-            self.store.save(d, 'model_finished', {'usage':usage})
+            self.model_finished(d, usage)
             return checked
         if name == 'select_sources':
             args = SelectionInput.model_validate(raw)
@@ -310,7 +315,7 @@ class Engine:
             result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']), timeout=45,
                 dependency='model_provider', operation='search_web')
             d = self.guard(mid)
-            self.store.save(d, 'model_finished', {'usage':usage})
+            self.model_finished(d, usage)
             return result
         if name == 'read_page':
             args = ReadInput.model_validate(raw)
@@ -387,19 +392,19 @@ class Engine:
                            'finding_target':2 if d['action_budget'] <= 10 else None,
                            'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
                                'title':p.get('title',''), 'published_at':p.get('published_at'),
-                               'passages':passages(p)[:6]} for p in list(d['pages'].values())[-1:]],
+                               'passages':passages(p)[:12]} for p in list(d['pages'].values())[-2:]],
                            'failed_pages':[{'url':s['url'], 'error':s.get('error')} for s in d['sources'] if s.get('error')][-10:],
-                           'source_candidates':d.get('source_candidates',[]) if not d['domains'] else [],
+                           'source_candidates':d.get('source_candidates',[]),
                            'known_findings':d.get('known_findings',[]),
                            'known_findings_truncated':d.get('known_findings_truncated',False),
                            'update_since':d.get('update_since'),
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
-                           'recent_results':history[-2:]}
+                           'recent_results':history[-4:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
                     dependency='model_provider', operation='decide')
                 d = self.guard(mid)
-                self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
+                self.model_finished(d, usage, proposed_action=name)
                 if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
                     reasons = {
                         'out_of_scope': 'Lockin réalise des veilles documentaires sur des sources publiques. Cette demande sort de ce cadre.',
