@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-TERMINAL = {'stopped', 'completed', 'budget_exhausted', 'deadline_reached', 'failed'}
+TERMINAL = {'refused', 'stopped', 'completed', 'budget_exhausted', 'deadline_reached', 'failed'}
 
 
 def now():
@@ -75,5 +75,5 @@ class Store:
                       actions_remaining=max(0, data['action_budget']-data['actions_used']), events=self.events(mid))
         text = '\n\n'.join(f"{f['title']}\n{f['summary']}\nIntérêt pratique : {f['developer_impact']}" for f in data['findings'])
         public['summary'] = {'partial': data['status'] != 'completed' or data['had_errors'],
-                             'text': text or 'Aucun résultat exploitable pour le moment.'}
+                             'text': data.get('refusal_reason') or text or 'Aucun résultat exploitable pour le moment.'}
         return public

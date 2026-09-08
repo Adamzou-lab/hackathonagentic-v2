@@ -17,6 +17,8 @@ class Provider:
         self.searches = []
 
     async def decide(self, context):
+        if not context.get('scope_approved'):
+            return 'accept_scope', {}, {}
         self.contexts.append(context)
         name, args = next(self.actions, ('finish', {}))
         return name, args, {}

@@ -29,6 +29,8 @@ class SlowProvider:
                                 dict(mission_id=self.mission_id, phase=phase, **fields))
 
     async def decide(self, context):
+        if not context.get('scope_approved'):
+            return 'accept_scope', {}, {}
         self.emit('tool_input_started', action='save_finding', block=0)
         for part in ('{"finding":', ' {"title"', ': "x"}}'):
             self.emit('tool_input', block=0, partial_json=part)

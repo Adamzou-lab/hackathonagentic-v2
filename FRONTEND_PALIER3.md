@@ -32,3 +32,28 @@ Le contrat de Claude a été livré pendant ce travail sur `p3-streaming` à `6c
 Le lecteur supporte les trames fragmentées, UTF-8 et CRLF, ignore les keepalive, borne les données provisoires et ferme la connexion après end. Après coupure, reconnexion avec le dernier journal disponible, sans POST de mission. Un serveur plus ancien sans route stream conserve le suivi par polling. Les abonnements précédents sont annulés lors du changement de mission ou de reconnexion.
 
 Vérification navigateur sur le serveur SSE intégré avec fournisseur de test : connexion authentifiée, fragments visibles pendant la mission, refus tool_disabled_for_test dans le journal, puis fin du flux. Aucun nouvel essai Haiku payant effectué. Le bonus streaming n'est donc pas déclaré acquis : refaire la présentation avec le fournisseur réel après accord sur le crédit API. La limite de Claude demeure : le résultat du moteur de recherche Anthropic arrive d'un bloc, seuls les fragments de décision du modèle sont diffusés.
+
+### Refus des demandes hors périmètre
+
+Avant tout outil, le modèle doit choisir `accept_scope` ou `refuse` ; cette étape
+ne dispose d'aucun outil de recherche. Le serveur interdit recherche, lecture,
+sauvegarde et fin normale tant que le périmètre n'est pas accepté. La décision
+est comptée comme un appel modèle et soumise aux mêmes limites de temps.
+
+Le périmètre est la veille/recherche documentaire publique sur les domaines
+sélectionnés. Les actions physiques, achats, envois, modifications de systèmes,
+demandes de secrets et demandes mixtes contenant une action interdite sont
+refusés. Une demande ambiguë nécessite une reformulation. Aucun routage par
+mots-clés du sujet n'est utilisé. Le classifieur sémantique reste un modèle :
+une mauvaise classification demeure possible et doit être évaluée avec Haiku.
+
+L'état terminal `refused` expose `refusal_reason`, un message fixe choisi par le
+serveur à partir d'un code autorisé (aucune explication libre du modèle affichée).
+Le journal publie `mission_refused`, puis `finished` ; le SSE se termine par `end`.
+Une réponse modèle sans action, multiple ou marquée tronquée refuse proprement.
+Les pannes réseau restent des erreurs techniques distinctes du refus.
+
+Tests sans API : blocage avant validation, décisions malformées, refus visible
+par API/SSE, et parcours accepté jusqu'à la recherche. Ces doubles ne prouvent
+pas la classification réelle de « prépare-moi un sandwich ». Aucun appel payant
+supplémentaire ni mise à jour de la maquette Netlify dans cette modification.

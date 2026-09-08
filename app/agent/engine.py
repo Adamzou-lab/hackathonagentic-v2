@@ -149,6 +149,7 @@ class Engine:
 
     async def run(self, mid):
         history = []
+        scope_approved = False
         reader = self.reader_factory(lambda: self.reserve(mid, 'network_requests_used', 200, 'network_started'))
         try:
             d = self.guard(mid)
@@ -160,13 +161,30 @@ class Engine:
                     raise Halt('budget_exhausted')
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
-                context = {'mission':{k:d[k] for k in ['subject','domains','created_at']},
+                context = {'scope_approved':scope_approved, 'mission':{k:d[k] for k in ['subject','domains','created_at']},
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
                            'recent_results':history[-4:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context))
                 d = self.guard(mid)
                 self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
+                if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
+                    reasons = {
+                        'out_of_scope': 'Lockin réalise des veilles documentaires sur des sources publiques. Cette demande sort de ce cadre.',
+                        'unsafe_request': 'Cette demande exige une action ou un accès non autorisé. Reformulez une demande de veille sur des sources publiques.',
+                        'clarification_required': 'Le périmètre de cette demande ne peut pas être validé. Précisez le sujet de veille et les informations recherchées.'}
+                    code = raw.get('code') if isinstance(raw, dict) and set(raw) == {'code'} else None
+                    code = code if isinstance(code, str) and code in reasons else 'clarification_required'
+                    d['refusal_reason'] = reasons[code]
+                    self.store.save(d, 'mission_refused', {'code':code, 'reason':reasons[code]})
+                    self.store.finish(mid, 'refused')
+                    return
+                if name == 'accept_scope':
+                    if scope_approved or raw != {}:
+                        raise ToolFailure('invalid_scope_decision')
+                    scope_approved = True
+                    self.store.save(d, 'scope_accepted', {})
+                    continue
                 if name == 'finish':
                     if raw:
                         raise ToolFailure('invalid_finish')

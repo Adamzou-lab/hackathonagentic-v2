@@ -7,6 +7,7 @@
   const demoApi = demo ? window.createLockinDemo() : null;
   const journalNodes = new Map();
   const terminal = new Set([
+    "refused",
     "stopped",
     "completed",
     "budget_exhausted",
@@ -14,6 +15,7 @@
     "failed",
   ]);
   const names = {
+    refused: "Demande refusée",
     pending: "En attente",
     running: "Veille en cours",
     stopping: "Arrêt en cours",
@@ -30,6 +32,8 @@
     finish: "Recherche terminée",
   };
   const eventNames = {
+    scope_accepted: "Périmètre validé",
+    mission_refused: "Demande refusée",
     created: "Mission créée",
     started: "Mission démarrée",
     model_started: "Appel à Haiku",
@@ -269,6 +273,7 @@
   }
   function eventText(event) {
     const d = event.data || {};
+    if (d.reason) return d.reason;
     if (d.code) return (tools[d.tool] || "Action") + " · " + d.code;
     if (d.result?.error)
       return (
@@ -390,7 +395,8 @@
       " appels modèle · " +
       state.network_requests_used +
       " requêtes réseau";
-    if (state.error)
+    if (state.status === "refused") notice(state.refusal_reason);
+    else if (state.error)
       notice(
         "La mission s’est interrompue : " +
           state.error +
