@@ -272,9 +272,16 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
             </div>
           </div>
           <div class="lk-current">
-            <small id="lk-currentlabel">ACTION EN COURS</small
-            ><span id="lk-currenttext">En attente</span
-            ><small id="lk-currentdomain"></small>
+            <div class="lk-costsummary" role="status" aria-live="polite">
+              <small>COÛT DERNIÈRE REQUÊTE</small>
+              <strong id="lk-lastcost">—</strong>
+              <small id="lk-lastcostdetail">Aucun appel terminé</small>
+            </div>
+            <div class="lk-actionsummary">
+              <small id="lk-currentlabel">ACTION EN COURS</small
+              ><span id="lk-currenttext">En attente</span
+              ><small id="lk-currentdomain"></small>
+            </div>
           </div>
         </div>
         <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>

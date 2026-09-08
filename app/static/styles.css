@@ -379,14 +379,32 @@
   border-left: 1px solid var(--lk-line);
   padding: 8px 16px;
   display: flex;
-  flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 16px;
   font-size: 12px;
 }
 #lockin-mock .lk-current small {
   color: var(--lk-muted);
   font-size: 11px;
+}
+#lockin-mock .lk-costsummary,
+#lockin-mock .lk-actionsummary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+#lockin-mock .lk-costsummary {
+  border-right: 1px solid var(--lk-line);
+  padding-right: 16px;
+}
+#lockin-mock #lk-lastcost {
+  color: var(--lk-accent);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 #lockin-mock .lk-tabs {
   display: flex;
@@ -604,6 +622,14 @@
   #lockin-mock .lk-meter {
     flex-direction: column;
     text-align: center;
+  }
+  #lockin-mock .lk-current {
+    flex-direction: column;
+  }
+  #lockin-mock .lk-costsummary {
+    border-right: 0;
+    border-bottom: 1px solid var(--lk-line);
+    padding: 0 0 12px;
   }
   #lockin-mock .lk-tabs {
     gap: 22px;

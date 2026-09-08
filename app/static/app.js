@@ -71,6 +71,17 @@
       ? "Date inconnue"
       : d.toLocaleDateString("fr-FR");
   };
+  const integer = (value) =>
+    new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(
+      Number(value) || 0,
+    );
+  const dollars = (value) =>
+    new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    }).format(value);
   function https(value) {
     try {
       const url = new URL(value);
@@ -395,6 +406,35 @@
       " appels modèle · " +
       state.network_requests_used +
       " requêtes réseau";
+    const cost = state.last_request_cost;
+    if (!cost) {
+      q("#lk-lastcost").textContent = "—";
+      q("#lk-lastcostdetail").textContent = "Aucun appel terminé";
+    } else {
+      q("#lk-lastcost").textContent = Number.isFinite(cost.amount_usd)
+        ? "≈ " + dollars(cost.amount_usd)
+        : "Indisponible";
+      const details = [
+        integer(cost.input_tokens) + " jetons entrée",
+        integer(cost.output_tokens) + " sortie",
+      ];
+      if (cost.cache_creation_input_tokens)
+        details.push(integer(cost.cache_creation_input_tokens) + " cache écrit");
+      if (cost.cache_read_input_tokens)
+        details.push(integer(cost.cache_read_input_tokens) + " cache lu");
+      if (cost.web_search_requests)
+        details.push(
+          integer(cost.web_search_requests) +
+            (cost.web_search_requests === 1
+              ? " recherche web"
+              : " recherches web"),
+        );
+      q("#lk-lastcostdetail").textContent =
+        details.join(" · ") +
+        (Number.isFinite(cost.amount_usd)
+          ? " · estimation tarif public"
+          : " · tarif du modèle non configuré");
+    }
     if (state.status === "refused") notice(state.refusal_reason);
     else if (state.error)
       notice(

@@ -33,6 +33,8 @@ window.createLockinDemo = function () {
         actions_remaining: r.action_budget,
         model_calls_used: 0,
         network_requests_used: 0,
+        last_request_cost: null,
+        total_estimated_cost_usd: 0,
         current_action: null,
         error: null,
         findings: [],
@@ -95,6 +97,29 @@ window.createLockinDemo = function () {
             ? "unavailable"
             : null;
       let result;
+      const inputTokens = 120 + step * 7;
+      const outputTokens = 28 + step * 3;
+      const webSearchRequests = step === 1 ? 1 : 0;
+      const amount =
+        inputTokens / 1000000 +
+        (outputTokens * 5) / 1000000 +
+        webSearchRequests * 0.01;
+      state.model_calls_used++;
+      state.network_requests_used += 1 + webSearchRequests;
+      state.last_request_cost = {
+        model: "claude-haiku-4-5",
+        currency: "USD",
+        amount_usd: Number(amount.toFixed(8)),
+        estimated: true,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        web_search_requests: webSearchRequests,
+      };
+      state.total_estimated_cost_usd = Number(
+        (state.total_estimated_cost_usd + amount).toFixed(8),
+      );
       if (failure) {
         result = { error: failure };
         emit("tool_error", { tool: state.current_action, code: failure });
