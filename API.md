@@ -66,3 +66,85 @@ Erreurs : `{"detail":"message"}` pour 401/404/409/503 ; 422 contient les erreurs
 Pas de garantie de vérité ou d'exhaustivité, pas de reprise automatique après panne, pas de détection exhaustive d'injection. Date de publication éventuellement inconnue. Les pages bloquées, privées, trop grosses ou non HTML sont refusées. Une synthèse à l'arrêt est assemblée sans nouvel appel au modèle. Plafonds fixes : 60 appels modèle, 200 requêtes réseau locales, 2 tentatives par URL, 15 secondes par opération et contexte modèle borné. La lecture des sources respecte robots.txt de façon conservatrice ; refus si ses règles ne sont pas récupérables (404 signifie absence de règles). Les redirections des documents sont refusées dans ce socle avant de les suivre ; utiliser les URL finales des résultats. Seules les redirections de robots.txt sont suivies avec contrôle de domaine et de résolution réseau.
 
 La qualification de source « officielle » reste le choix de l'opérateur dans la liste de domaines ; le serveur ne peut pas l'attester automatiquement. Tests automatisés avec fournisseurs substitués : ne pas les présenter comme une validation réelle de la clé Anthropic ou comme une démonstration de 30 minutes.
+
+## Flux progressif (palier 3)
+
+### Route
+
+`GET /api/missions/{id}/stream` · `Content-Type: text/event-stream`
+
+Authentification identique aux autres routes `/api/` : en-tête `Authorization: Bearer <LOCKIN_ACCESS_TOKEN>`. **Le jeton ne passe jamais par l'URL** : il finirait dans les journaux du serveur, l'historique du navigateur et le `Referer`.
+
+Conséquence pour le frontend : `EventSource` **ne convient pas**, il ne permet pas d'ajouter un en-tête. Utiliser `fetch` en lecture de flux (exemple plus bas).
+
+Réponses : `401` sans jeton ou avec un mauvais jeton, `404` si la mission n'existe pas, `503` si `LOCKIN_ACCESS_TOKEN` est absent ou trop court. La route est **en lecture seule** : s'y connecter, se déconnecter ou se reconnecter ne lance jamais de mission et n'en modifie aucune.
+
+### Deux natures d'évènements, à ne jamais confondre
+
+| Nature | `event:` | Porte un `id:` | Rejoué après coupure | Fait foi |
+| --- | --- | --- | --- | --- |
+| Journal persisté | `journal` | oui, le `seq` | oui | **oui** |
+| Fragment provisoire | `draft` | non | non | non |
+| Fin de flux | `end` | non | non | oui |
+
+Un `draft` décrit ce que le fournisseur est en train d'écrire. Il est incomplet par nature, il n'est jamais exécuté, et il ne doit servir qu'à l'affichage. **Aucune décision, aucun compteur, aucun état ne doit être dérivé d'un `draft`.** Tout ce qui compte arrive en `journal`.
+
+### Format
+
+```
+id: 42
+event: journal
+data: {"mission_id":"…","seq":42,"at":"2026-09-07T…","kind":"action_started",
+       "data":{"tool":"read_page","action_number":3,"parameters":{…}}}
+
+event: draft
+data: {"mission_id":"…","phase":"tool_input","block":0,"partial_json":"{\"url\": \"https://a"}
+
+event: end
+data: {"mission_id":"…","status":"completed","last_seq":57}
+```
+
+Phases possibles d'un `draft` : `tool_input_started` (le modèle commence à composer un appel, champ `action`), `tool_input` (fragment brut de JSON, champ `partial_json`), `tool_input_complete` (le bloc est clos), `text` (texte visible du modèle, champ `text`).
+
+Le raisonnement interne du modèle n'est **jamais** diffusé : les blocs `thinking` et `signature` sont ignorés à la source, pas filtrés à l'affichage.
+
+Une ligne `: keepalive` est envoyée après 15 secondes sans trafic, pour traverser les proxys. C'est un commentaire SSE, à ignorer côté client.
+
+### Reconnexion et déduplication
+
+Le client renvoie le dernier `seq` reçu dans l'en-tête `Last-Event-ID`. Le serveur reprend strictement après ce numéro. Les `draft` ne sont pas rejoués : ils décrivent un instant révolu.
+
+Déduplication côté client : ignorer tout `journal` dont le `seq` est inférieur ou égal au dernier traité. Les `seq` sont monotones et sans trou pour une mission donnée.
+
+Le flux se termine par `end` dès que la mission atteint un état terminal, après avoir vidé le journal restant. Le client doit alors cesser de se reconnecter.
+
+### Client attendu côté frontend
+
+```js
+const res = await fetch(`/api/missions/${id}/stream`, {
+  headers: { Authorization: `Bearer ${token}`, ...(lastSeq && {'Last-Event-ID': String(lastSeq)}) },
+});
+const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+let buffer = '';
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buffer += value;
+  const blocks = buffer.split('\n\n');
+  buffer = blocks.pop();
+  for (const block of blocks) {
+    if (block.startsWith(':')) continue;              // keepalive
+    const kind = block.match(/^event: (.+)$/m)?.[1];
+    const data = JSON.parse(block.match(/^data: (.+)$/m)?.[1] ?? 'null');
+    if (kind === 'journal') { lastSeq = data.seq; appliquerJournal(data); }
+    else if (kind === 'draft') afficherFragment(data);  // affichage seul
+    else if (kind === 'end') return data.status;
+  }
+}
+```
+
+Le polling d'`/api/missions/{id}` reste valable et sert de repli : le flux n'est pas la source de vérité de l'état, la base l'est.
+
+### Limite connue
+
+`search_web` n'est pas diffusé au fil de l'eau. C'est un outil exécuté côté Anthropic dont le résultat arrive d'un bloc : il n'a pas de progression lisible. Seule la décision du modèle, où il compose ses arguments, est diffusée.
