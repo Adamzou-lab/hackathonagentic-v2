@@ -75,4 +75,10 @@ Disponible dans la réponse de détail d'une mission, sans appel IA supplémenta
 
 Suite Python : 286 tests réussis. Évaluation autonome : 10/10 après adaptation du
 scénario nominal à la réduction de confiance (ses deux pages sont du même site).
-Le bonus d'affichage sera terminé lorsque Panaki aura intégré ce contrat à l'interface.
+Le bonus a été repris par Codex : le bloc « Coût de cette requête » affiche les
+tokens, les appels et la durée, pendant la mission et dans ses résultats conservés.
+Il distingue les mesures incomplètes et la réutilisation d'une mission. Aucun prix
+monétaire n'est inventé. Vérification visuelle locale en mode démonstration et
+7 contrôles de présentation avec `node tests/frontend_usage.test.cjs`.
+Suite intégrée avec Claude : 338 tests Python et 12 tests frontend existants réussis.
+Le déploiement public de ce bonus reste à effectuer.

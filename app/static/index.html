@@ -14,6 +14,7 @@
     <script defer src="/static/journal.js"></script>
     <script defer src="/static/demo.js"></script>
     <script defer src="/static/stream.js"></script>
+    <script defer src="/static/usage.js"></script>
     <script defer src="/static/app.js"></script>
   </head>
   <body>
@@ -357,6 +358,15 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
             ><small id="lk-currentdomain"></small>
           </div>
         </div>
+        <section class="lk-usage" aria-labelledby="lk-usage-title">
+          <h3 id="lk-usage-title">Coût de cette requête</h3>
+          <dl class="lk-usage-metrics">
+            <div><dt>Tokens consommés</dt><dd id="lk-usage-tokens">Indisponible</dd></div>
+            <div><dt>Appels IA</dt><dd id="lk-usage-calls">Indisponible</dd></div>
+            <div><dt>Durée (secondes)</dt><dd id="lk-usage-duration">Indisponible</dd></div>
+          </dl>
+          <p id="lk-usage-note"></p>
+        </section>
         <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
         <div class="lk-watch-actions">
           <button type="button" class="lk-plain" id="lk-mission-watch" hidden>

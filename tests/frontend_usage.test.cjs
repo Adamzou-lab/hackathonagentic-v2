@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+const {presentation:p}=require('../app/static/usage.js');
+assert.equal(p({}).tokens,'Indisponible');
+assert.equal(p({usage:{tokens_complete:true,total_tokens:0,model_calls:0,elapsed_seconds:0}}).tokens,'0');
+assert.equal(p({usage:{tokens_complete:false,total_tokens:90}}).tokens,'Indisponible');
+assert.match(p({reuse:{reason:'recent_completed'}}).note,/aucun nouvel appel/);
+assert.match(p({reuse:{reason:'already_running'}}).note,/continue d’évoluer/);
+assert.match(p({},true).note,/simulée/);
+assert.equal(p({usage:{tokens_complete:true,total_tokens:1234}}).tokens,(1234).toLocaleString('fr-FR'));
+console.log('7 contrôles affichage consommation réussis');

@@ -472,6 +472,9 @@
     return row;
   }
   function render(state) {
+    // Polling/SSE snapshots omit the reuse receipt returned by mission creation.
+    if (mission?.id === state.id && mission.reuse && !state.reuse)
+      state = { ...state, reuse: mission.reuse };
     if (mission?.id !== state.id) {
       journalNodes.clear();
       q("#lk-draft").hidden = true;
@@ -480,6 +483,11 @@
       q("#lk-events").replaceChildren();
     }
     mission = state;
+    const usage = window.LockinUsage.presentation(state, demo);
+    q("#lk-usage-tokens").textContent = usage.tokens;
+    q("#lk-usage-calls").textContent = usage.calls;
+    q("#lk-usage-duration").textContent = usage.duration;
+    q("#lk-usage-note").textContent = usage.note;
     if (!demo) remember(state.id);
     showWork();
     const done = terminal.has(state.status);
