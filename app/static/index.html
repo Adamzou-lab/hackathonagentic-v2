@@ -1,330 +1,328 @@
 <!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="color-scheme" content="light dark" />
-  <title>Lockin</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M11 8v14h11' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
-</head>
-<body>
-
-  <svg class="sprite" aria-hidden="true">
-    <symbol id="i-recherche" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
-    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
-    <symbol id="i-eclair" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
-    <symbol id="i-horloge" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
-    <symbol id="i-ok" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
-    <symbol id="i-croix" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
-    <symbol id="i-chargement" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></symbol>
-    <symbol id="i-soleil" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-    <symbol id="i-lune" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
-    <symbol id="i-copier" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
-    <symbol id="i-telecharger" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
-    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
-    <symbol id="i-bouclier" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/></symbol>
-    <symbol id="i-journal" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></symbol>
-    <symbol id="i-lien" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
-    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="i-cadenas" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
-  </svg>
-
-  <div class="decor" aria-hidden="true">
-    <span class="decor-tache decor-tache-1"></span>
-    <span class="decor-tache decor-tache-2"></span>
-  </div>
-
-  <div id="barre-activite" class="barre-activite" aria-hidden="true"></div>
-
-  <header class="topbar">
-    <a class="marque" href="/" aria-label="Lockin, accueil">
-      <span class="marque-logo" aria-hidden="true">L</span>
-      <span>Lockin</span>
-    </a>
-    <div id="topbar-mission" class="topbar-mission" hidden>
-      <span class="topbar-sujet-label">Sujet</span>
-      <span id="topbar-sujet" class="topbar-sujet"></span>
-    </div>
-    <div class="topbar-actions">
-      <span id="etat-badge" class="etat-badge" data-etat="pending" hidden>En attente</span>
-      <button type="button" id="bouton-theme" class="bouton-icone ondule" aria-label="Changer de thème">
-        <svg class="icone icone-soleil"><use href="#i-soleil"/></svg>
-        <svg class="icone icone-lune"><use href="#i-lune"/></svg>
-      </button>
-    </div>
-  </header>
-
-  <!-- Écran 1 : accueil -->
-  <main id="ecran-accueil" class="ecran ecran-accueil">
-    <section class="hero">
-      <p class="eyebrow">Agent de veille autonome</p>
-      <h1>Confiez une veille à un agent.<br /><span class="degrade-texte">Reprenez la main quand vous voulez.</span></h1>
-      <p class="hero-texte">
-        Lockin explore seul les sources que vous autorisez, dans un budget borné,
-        et tient un journal qui permet de retrouver exactement où il en est. À tout moment.
-      </p>
-    </section>
-
-    <form id="form-lancement" class="carte form-lancement" novalidate>
-      <div class="champ">
-        <label for="champ-sujet">Quel sujet souhaitez-vous explorer&nbsp;?</label>
-        <div class="saisie saisie-icone">
-          <svg class="icone" aria-hidden="true"><use href="#i-recherche"/></svg>
-          <input type="text" id="champ-sujet" name="sujet" placeholder="Nouveautés des frameworks d'agents IA" autocomplete="off" maxlength="500" required />
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Lockin — Veille autonome</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"
+    ></script>
+    <script defer src="/static/demo.js"></script>
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <div id="lockin-mock" aria-label="Lockin">
+      <header class="lk-header">
+        <div class="lk-brand">
+          <span class="lk-symbol" aria-hidden="true"></span>lockin
         </div>
-      </div>
-
-      <div class="champ">
-        <div class="label-ligne">
-          <label for="champ-domaine">Domaines autorisés</label>
-          <span id="domaines-compteur" class="compteur">0 / 5</span>
-        </div>
-        <div id="chips-domaines" class="chips" role="group" aria-label="Domaines autorisés">
-          <input type="text" id="champ-domaine" placeholder="www.exemple.org puis Entrée" autocomplete="off" spellcheck="false" />
-        </div>
-        <p class="aide">
-          Noms d'hôte exacts, sans http:// ni chemin — <code>www.exemple.org</code> et <code>exemple.org</code> sont deux domaines distincts.
-          Entrée ou virgule pour ajouter, Retour arrière pour retirer le dernier.
-        </p>
-        <p id="erreur-domaine" class="erreur-champ" role="alert" hidden></p>
-      </div>
-
-      <div class="grille-2">
-        <div class="champ">
-          <div class="label-ligne">
-            <label for="champ-budget">
-              <svg class="icone icone-label" aria-hidden="true"><use href="#i-eclair"/></svg>
-              Budget d'actions
-            </label>
-            <input type="number" id="champ-budget" class="saisie-nombre" min="1" max="100" step="1" value="20" />
-          </div>
-          <input type="range" id="curseur-budget" class="curseur" min="1" max="100" step="1" value="20" aria-label="Budget d'actions" />
-          <p class="aide">Tentatives d'outils, de 1 à 100 : recherche, lecture, sauvegarde — les échecs comptent aussi.</p>
-        </div>
-        <div class="champ">
-          <div class="label-ligne">
-            <label for="champ-duree">
-              <svg class="icone icone-label" aria-hidden="true"><use href="#i-horloge"/></svg>
-              Durée maximale (min)
-            </label>
-            <input type="number" id="champ-duree" class="saisie-nombre" min="1" max="30" step="1" value="10" />
-          </div>
-          <input type="range" id="curseur-duree" class="curseur" min="1" max="30" step="1" value="10" aria-label="Durée maximale en minutes" />
-          <p class="aide">Échéance de 1 à 30 minutes, indépendante du budget. L'agent s'arrête au premier des deux atteint.</p>
-        </div>
-      </div>
-
-      <div class="presets" role="group" aria-label="Réglages rapides">
-        <button type="button" class="preset ondule" data-budget="10" data-duree="5">
-          <strong>Rapide</strong><span>10 actions · 5 min</span>
-        </button>
-        <button type="button" class="preset ondule" data-budget="20" data-duree="10">
-          <strong>Standard</strong><span>20 actions · 10 min</span>
-        </button>
-        <button type="button" class="preset ondule" data-budget="100" data-duree="30">
-          <strong>Approfondi</strong><span>100 actions · 30 min</span>
-        </button>
-      </div>
-
-      <div class="champ">
-        <label for="champ-jeton">
-          <svg class="icone icone-label" aria-hidden="true"><use href="#i-cadenas"/></svg>
-          Jeton opérateur
-        </label>
-        <div class="saisie saisie-icone">
-          <svg class="icone" aria-hidden="true"><use href="#i-cadenas"/></svg>
-          <input type="password" id="champ-jeton" autocomplete="off" placeholder="LOCKIN_ACCESS_TOKEN, 32 caractères minimum" />
-        </div>
-        <p class="aide">
-          Le secret d'accès à votre instance, jamais votre clé Anthropic. Il reste en mémoire de la page : ni dans l'URL, ni dans un fichier.
-        </p>
-      </div>
-
-      <p id="resume-mission" class="resume-mission" aria-live="polite"></p>
-      <p id="erreur-formulaire" class="erreur-champ" role="alert" hidden></p>
-
-      <button type="submit" id="bouton-lancer" class="bouton bouton-principal bouton-large ondule" disabled>
-        <svg class="icone icone-chargement" aria-hidden="true" hidden><use href="#i-chargement"/></svg>
-        <span class="bouton-texte">Lancer la recherche</span>
-      </button>
-    </form>
-
-    <section class="promesses" aria-label="Ce que garantit Lockin">
-      <article class="promesse">
-        <svg class="icone" aria-hidden="true"><use href="#i-eclair"/></svg>
-        <h3>Budget borné</h3>
-        <p>Chaque action consomme une unité. Le modèle ne peut ni en demander plus, ni contourner la limite.</p>
-      </article>
-      <article class="promesse">
-        <svg class="icone" aria-hidden="true"><use href="#i-stop"/></svg>
-        <h3>Arrêt immédiat</h3>
-        <p>Dès que le serveur reçoit l'ordre, plus aucune nouvelle action n'est lancée. Les résultats restent.</p>
-      </article>
-      <article class="promesse">
-        <svg class="icone" aria-hidden="true"><use href="#i-bouclier"/></svg>
-        <h3>Journal reconstituable</h3>
-        <p>Chaque événement est horodaté et numéroté. On retrouve l'état exact à n'importe quel instant.</p>
-      </article>
-    </section>
-  </main>
-
-  <!-- Écran 2 : mission en cours ou terminée -->
-  <main id="ecran-recherche" class="ecran ecran-recherche" hidden>
-    <p id="bandeau-demo" class="bandeau bandeau-demo" hidden>
-      Mode démonstration : données simulées dans le navigateur, aucun appel réseau. Retirez <code>?demo</code> de l'URL pour utiliser le vrai service.
-    </p>
-    <p id="bandeau-connexion" class="bandeau bandeau-attention" role="status" hidden>
-      Connexion au serveur perdue, nouvelle tentative…
-    </p>
-    <p id="bandeau-erreur" class="bandeau bandeau-danger" role="alert" hidden></p>
-
-    <section class="tableau-bord">
-      <div class="carte carte-etat">
-        <div class="etat-entete">
-          <span id="etat-badge-grand" class="etat-badge etat-badge-grand" data-etat="pending">En attente</span>
-        </div>
-        <p id="etat-description" class="etat-description"></p>
-        <div class="etat-infos">
-          <div class="derniere-action">
-            <span class="derniere-action-label">Action en cours</span>
-            <span id="action-en-cours" class="derniere-action-texte">—</span>
-          </div>
-          <div class="derniere-action">
-            <span class="derniere-action-label">Dernier événement</span>
-            <span id="derniere-action" class="derniere-action-texte">—</span>
-          </div>
-        </div>
-        <div class="etat-stats">
-          <div class="stat"><strong id="stat-sources-ok">0</strong><span>sources lues</span></div>
-          <div class="stat"><strong id="stat-sources-echec">0</strong><span>en échec</span></div>
-          <div class="stat"><strong id="stat-constats">0</strong><span>constats</span></div>
-          <div class="stat"><strong id="stat-appels-modele">0</strong><span>appels modèle</span></div>
-          <div class="stat"><strong id="stat-requetes-reseau">0</strong><span>requêtes réseau</span></div>
-        </div>
-        <div class="etat-actions">
-          <button type="button" id="bouton-arret" class="bouton bouton-danger ondule">
-            <svg class="icone" aria-hidden="true"><use href="#i-stop"/></svg>
-            <span class="bouton-texte">Arrêter l'agent</span>
-          </button>
-          <button type="button" id="bouton-nouvelle-recherche" class="bouton bouton-secondaire ondule" hidden>
-            <svg class="icone" aria-hidden="true"><use href="#i-plus"/></svg>
-            <span>Nouvelle recherche</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="carte carte-anneaux" aria-label="Ressources consommées">
-        <div id="anneau-budget-bloc" class="anneau-bloc">
-          <svg viewBox="0 0 160 160" class="anneau" role="img" aria-label="Budget consommé">
-            <defs>
-              <linearGradient id="degrade-budget" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="var(--accent)"/>
-                <stop offset="100%" stop-color="var(--accent-2)"/>
-              </linearGradient>
-            </defs>
-            <circle class="anneau-fond" cx="80" cy="80" r="68"/>
-            <circle id="anneau-budget-cercle" class="anneau-valeur" cx="80" cy="80" r="68" stroke="url(#degrade-budget)"/>
-          </svg>
-          <div class="anneau-centre">
-            <span id="anneau-budget-valeur" class="anneau-nombre">0 / 0</span>
-            <span class="anneau-legende">actions</span>
-          </div>
-          <p class="anneau-titre">Budget consommé</p>
-          <p id="anneau-budget-detail" class="anneau-detail">restant : —</p>
-        </div>
-        <div id="anneau-temps-bloc" class="anneau-bloc">
-          <svg viewBox="0 0 160 160" class="anneau" role="img" aria-label="Temps écoulé">
-            <defs>
-              <linearGradient id="degrade-temps" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="var(--succes)"/>
-                <stop offset="100%" stop-color="var(--succes-2)"/>
-              </linearGradient>
-            </defs>
-            <circle class="anneau-fond" cx="80" cy="80" r="68"/>
-            <circle id="anneau-temps-cercle" class="anneau-valeur" cx="80" cy="80" r="68" stroke="url(#degrade-temps)"/>
-          </svg>
-          <div class="anneau-centre">
-            <span id="anneau-temps-valeur" class="anneau-nombre">0:00 / 0:00</span>
-            <span class="anneau-legende">minutes</span>
-          </div>
-          <p class="anneau-titre">Temps écoulé</p>
-          <p id="anneau-temps-detail" class="anneau-detail">échéance : —</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="colonnes">
-      <div class="carte">
-        <header class="carte-entete">
-          <h2><svg class="icone" aria-hidden="true"><use href="#i-globe"/></svg>Sources consultées</h2>
-          <span id="sources-compteur" class="compteur">0</span>
-        </header>
-        <div id="sources-vide" class="vide">
-          <p>Aucune source consultée pour l'instant.</p>
-        </div>
-        <ul id="liste-sources" class="liste-sources"></ul>
-      </div>
-
-      <div class="carte">
-        <header class="carte-entete">
-          <h2><svg class="icone" aria-hidden="true"><use href="#i-journal"/></svg>Synthèse</h2>
-          <span id="synthese-partielle" class="etiquette etiquette-attention" hidden>Partielle</span>
-        </header>
-        <div id="synthese-vide" class="vide">
-          <p id="synthese-vide-texte">Aucun constat pour l'instant.</p>
-        </div>
-        <ol id="liste-constats" class="liste-constats"></ol>
-      </div>
-    </section>
-
-    <section id="carte-journal" class="carte carte-journal">
-      <header class="carte-entete carte-entete-journal">
-        <h2>
-          <svg class="icone" aria-hidden="true"><use href="#i-journal"/></svg>
-          Journal
-          <span id="journal-compteur" class="compteur">0</span>
-        </h2>
-        <div class="journal-outils">
-          <div id="journal-filtres" class="filtres" role="group" aria-label="Filtrer le journal">
-            <button type="button" class="filtre ondule est-actif" data-filtre="tout">Tout</button>
-            <button type="button" class="filtre ondule" data-filtre="recherche">Recherches</button>
-            <button type="button" class="filtre ondule" data-filtre="lecture">Lectures</button>
-            <button type="button" class="filtre ondule" data-filtre="constat">Constats</button>
-            <button type="button" class="filtre ondule" data-filtre="erreur">Erreurs</button>
-            <button type="button" class="filtre ondule" data-filtre="etat">États</button>
-            <button type="button" class="filtre ondule" data-filtre="interne">Interne</button>
-          </div>
-          <label class="bascule">
-            <input type="checkbox" id="journal-suivre" checked />
-            <span>Suivre</span>
-          </label>
-          <button type="button" id="bouton-copier-journal" class="bouton bouton-secondaire bouton-petit ondule">
-            <svg class="icone" aria-hidden="true"><use href="#i-copier"/></svg>
-            <span>Copier</span>
-          </button>
-          <button type="button" id="bouton-exporter" class="bouton bouton-secondaire bouton-petit ondule">
-            <svg class="icone" aria-hidden="true"><use href="#i-telecharger"/></svg>
-            <span>Exporter JSON</span>
-          </button>
-          <button type="button" id="bouton-journal-replier" class="bouton-icone ondule" aria-label="Replier le journal" aria-expanded="true">
-            <svg class="icone" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
+        <div class="lk-chrome">
+          <span class="lk-proto">HAIKU 4.5</span
+          ><button class="lk-plain" id="lk-nav" hidden>Nouvelle veille</button
+          ><span class="lk-avatar">A</span>
         </div>
       </header>
-      <div id="journal-vide" class="vide">
-        <p>Le journal se remplit dès la première action.</p>
-      </div>
-      <ol id="journal-liste" class="journal-liste" data-filtre="tout"></ol>
-    </section>
-  </main>
-
-  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="false"></div>
-
-  <script src="/static/app.js"></script>
-</body>
+      <p id="lk-demo-banner" class="lk-notice" hidden>
+        Mode démonstration · Données fictives · Aucun appel API
+      </p>
+      <section class="lk-home" id="lk-home">
+        <div class="lk-intro">
+          <span class="lk-eyebrow">Votre veille, sous contrôle</span>
+          <h1>Un sujet. Des sources.<br />On s’occupe de la suite.</h1>
+          <p>Une veille autonome, avec des limites que vous choisissez.</p>
+        </div>
+        <form class="lk-form" id="lk-form">
+          <label for="lk-topic">Que souhaitez-vous explorer ?</label
+          ><textarea id="lk-topic" required maxlength="500">
+Les nouveautés des outils et frameworks d’agents IA</textarea
+          >
+          <div class="lk-divider"></div>
+          <div class="lk-fieldhead">
+            <label>Sources autorisées</label
+            ><span id="lk-count">3 / 5 domaines</span>
+          </div>
+          <div class="lk-domains" id="lk-domains"></div>
+          <div class="lk-domainentry" id="lk-domainentry" hidden>
+            <input
+              id="lk-domaininput"
+              aria-label="Nouveau domaine"
+              placeholder="exemple.com"
+            /><button type="button" class="lk-add" id="lk-confirmdomain">
+              Ajouter
+            </button>
+          </div>
+          <div class="lk-divider"></div>
+          <div class="lk-fieldhead">
+            <label id="lk-packslabel">Pack de recherche</label
+            ><span id="lk-packstate" aria-live="polite">Approfondi</span>
+          </div>
+          <div class="lk-packs" role="group" aria-labelledby="lk-packslabel">
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="10"
+              data-duration="5"
+              data-name="Rapide"
+              aria-pressed="false"
+            >
+              <strong>Rapide</strong><small>10 actions · 5 min</small>
+            </button>
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="20"
+              data-duration="10"
+              data-name="Standard"
+              aria-pressed="false"
+            >
+              <strong>Standard</strong><small>20 actions · 10 min</small>
+            </button>
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="100"
+              data-duration="30"
+              data-name="Approfondi"
+              aria-pressed="true"
+            >
+              <strong>Approfondi</strong><small>100 actions · 30 min</small>
+            </button>
+          </div>
+          <div class="lk-limits">
+            <div>
+              <div class="lk-limithead">
+                <label for="lk-budget">Budget d’actions</label
+                ><input
+                  id="lk-budget"
+                  type="number"
+                  value="100"
+                  min="1"
+                  max="100"
+                  step="1"
+                  required
+                />
+              </div>
+              <input
+                id="lk-budgetrange"
+                class="lk-range"
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                value="100"
+                aria-label="Régler le budget d’actions"
+              />
+              <div class="lk-rangebounds">
+                <span>1 action</span><span>100 maximum</span>
+              </div>
+            </div>
+            <div>
+              <div class="lk-limithead">
+                <label for="lk-duration">Durée limite (min)</label
+                ><input
+                  id="lk-duration"
+                  type="number"
+                  value="30"
+                  min="1"
+                  max="30"
+                  step="1"
+                  required
+                />
+              </div>
+              <input
+                id="lk-durationrange"
+                class="lk-range"
+                type="range"
+                min="1"
+                max="30"
+                step="1"
+                value="30"
+                aria-label="Régler la durée en minutes"
+              />
+              <div class="lk-rangebounds">
+                <span>1 minute</span><span>30 maximum</span>
+              </div>
+            </div>
+          </div>
+          <div class="lk-divider"></div>
+          <div id="lk-auth">
+            <label for="lk-access">Code d’accès aux recherches</label>
+            <input
+              id="lk-access"
+              type="password"
+              autocomplete="off"
+              minlength="32"
+              required
+              placeholder="Votre code Lockin"
+              aria-describedby="lk-accesshelp"
+            />
+            <p id="lk-accesshelp" class="lk-accesshelp">
+              Le jeton opérateur configuré sur votre serveur. Il reste en
+              mémoire dans cette page, jamais la clé Anthropic.
+            </p>
+          </div>
+          <div id="lk-demo-options" hidden>
+            <label for="lk-scenario">Scénario de démonstration</label
+            ><select id="lk-scenario">
+              <option value="success">Recherche et résultat</option>
+              <option value="disabled">Outil désactivé : refus</option>
+              <option value="error">Panne de lecture</option>
+            </select>
+          </div>
+          <p class="lk-error" id="lk-error" role="alert" hidden></p>
+          <button class="lk-submit" type="button">
+            Lancer la veille
+            <i data-lucide="arrow-up-right" aria-hidden="true"></i>
+          </button>
+          <p class="lk-note">
+            Recherche sur les 7 derniers jours · Arrêt possible à tout moment
+          </p>
+        </form>
+        <div class="lk-bottom">
+          <span
+            ><i data-lucide="scan-eye" aria-hidden="true"></i>Chaque action
+            visible</span
+          ><span
+            ><i data-lucide="file-check-2" aria-hidden="true"></i>Chaque
+            résultat sourcé</span
+          >
+        </div>
+      </section>
+      <section class="lk-work" id="lk-work" hidden>
+        <p id="lk-notice" class="lk-notice" role="status" hidden></p>
+        <div class="lk-titlebar">
+          <div>
+            <div class="lk-status" aria-live="polite">
+              <span class="lk-dot"></span><span id="lk-status">En attente</span>
+            </div>
+            <h2 id="lk-missiontitle">Votre veille</h2>
+            <p class="lk-subtitle" id="lk-missionsub"></p>
+          </div>
+          <button class="lk-stop" id="lk-stop">
+            <i data-lucide="square" aria-hidden="true"></i
+            ><span>Arrêter la veille</span>
+          </button>
+        </div>
+        <div class="lk-monitor">
+          <div class="lk-meter">
+            <div class="lk-ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle
+                  class="lk-track"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                />
+                <circle
+                  id="lk-budgetarc"
+                  class="lk-arc"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                  stroke-linecap="round"
+                  stroke-dasharray="91.86 270.18"
+                />
+              </svg>
+              <div class="lk-ringvalue">
+                <span id="lk-used">0</span><small id="lk-total">sur 100</small>
+              </div>
+            </div>
+            <div class="lk-meterlabel">
+              Actions utilisées<small id="lk-remaining">100 restantes</small>
+            </div>
+          </div>
+          <div class="lk-meter">
+            <div class="lk-ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle
+                  class="lk-track"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                />
+                <circle
+                  id="lk-timearc"
+                  class="lk-timearc"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                  stroke-linecap="round"
+                  stroke-dasharray="114.46 270.18"
+                />
+              </svg>
+              <div class="lk-ringvalue">
+                <span id="lk-elapsed">00:00</span
+                ><small id="lk-timemax">sur 30 min</small>
+              </div>
+            </div>
+            <div class="lk-meterlabel">
+              Temps écoulé<small>Échéance de la mission</small>
+            </div>
+          </div>
+          <div class="lk-current">
+            <small id="lk-currentlabel">ACTION EN COURS</small
+            ><span id="lk-currenttext">En attente</span
+            ><small id="lk-currentdomain"></small>
+          </div>
+        </div>
+        <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
+        <p id="lk-connection" class="lk-accesshelp">
+          Actualisation du serveur toutes les secondes
+        </p>
+        <button type="button" class="lk-plain" id="lk-reconnect" hidden>
+          Reconnecter le suivi
+        </button>
+        <div class="lk-tabs" aria-label="Contenu de la mission">
+          <button type="button" data-tab="results" aria-pressed="true">
+            Synthèse <span id="lk-findingcount">0</span></button
+          ><button type="button" data-tab="journal" aria-pressed="false">
+            Journal</button
+          ><button type="button" data-tab="sources" aria-pressed="false">
+            Sources
+          </button>
+        </div>
+        <div id="lk-results" class="lk-results">
+          <div>
+            <div class="lk-fieldhead">
+              <span id="lk-reportlabel">SYNTHÈSE EN CONSTRUCTION</span>
+            </div>
+            <div id="lk-findings">
+              <p class="lk-empty">
+                Les résultats apparaîtront ici après lecture des sources.
+              </p>
+            </div>
+          </div>
+          <aside class="lk-side">
+            <h3>Dernières actions</h3>
+            <div id="lk-recent"></div>
+          </aside>
+        </div>
+        <section id="lk-journal" hidden>
+          <div class="lk-fieldhead">
+            <span>Outil · Arguments · Résultat</span
+            ><button id="lk-export" class="lk-plain" type="button">
+              Exporter le journal
+            </button>
+          </div>
+          <div id="lk-events"></div>
+        </section>
+        <div id="lk-sources" hidden></div>
+      </section>
+      <footer class="lk-footer">
+        <span>LOCKIN · L’AUTONOMIE OBSERVABLE</span
+        ><span>Recherche web · Claude Haiku 4.5</span>
+      </footer>
+    </div>
+  </body>
 </html>
