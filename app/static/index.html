@@ -353,9 +353,16 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
             </div>
           </div>
           <div class="lk-current">
-            <small id="lk-currentlabel">ACTION EN COURS</small
-            ><span id="lk-currenttext">En attente</span
-            ><small id="lk-currentdomain"></small>
+            <div class="lk-costsummary" role="status" aria-live="polite">
+              <small>COÛT DERNIÈRE REQUÊTE</small>
+              <strong id="lk-lastcost">—</strong>
+              <small id="lk-lastcostdetail">Aucun appel terminé</small>
+            </div>
+            <div class="lk-actionsummary">
+              <small id="lk-currentlabel">ACTION EN COURS</small
+              ><span id="lk-currenttext">En attente</span
+              ><small id="lk-currentdomain"></small>
+            </div>
           </div>
         </div>
         <section class="lk-usage" aria-labelledby="lk-usage-title">
@@ -379,11 +386,10 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           hidden
           aria-label="Réponse progressive du modèle"
         >
-          <strong>En direct</strong>
+          <strong>Réception du modèle · Provisoire, non exécuté</strong>
           <p id="lk-draft-action"></p>
+          <pre id="lk-draft-input"></pre>
           <p id="lk-draft-text"></p>
-          <details><summary>Arguments reçus · provisoires avant validation</summary>
-          <pre id="lk-draft-input"></pre></details>
         </section>
         <p id="lk-situation" class="lk-situation" hidden></p>
         <p id="lk-connection" class="lk-accesshelp">
