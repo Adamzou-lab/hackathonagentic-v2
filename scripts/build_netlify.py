@@ -23,6 +23,12 @@ def build(api_base, output):
         raise ValueError('Configuration frontend manquante ou ambiguë.')
     markup = markup.replace(placeholder,
         '<meta name="lockin-api-base" content="' + html.escape(api_base.rstrip('/'), quote=True) + '" />')
+    # Le document contient son style : aucun chargement CSS séparé n'est requis.
+    stylesheet = '<link rel="stylesheet" href="/static/styles.css" />'
+    css = (root / 'app/static/styles.css').read_text()
+    if markup.count(stylesheet) != 1 or '</style' in css.lower():
+        raise ValueError('Feuille de style manquante ou incompatible avec le document autonome.')
+    markup = markup.replace(stylesheet, '<style id="lockin-styles">\n' + css + '\n</style>')
     (destination / 'index.html').write_text(markup)
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
     (destination / 'version.json').write_text(json.dumps({'commit':commit, 'mode':'real', 'api_base':api_base.rstrip('/')}))

@@ -31,6 +31,10 @@ def test_netlify_artifact_is_real_and_contains_only_public_configuration(tmp_pat
     output = build('https://adamzou.fr/lockin-api', tmp_path/'site')
     assert 'https://adamzou.fr/lockin-api' in (output/'index.html').read_text()
     assert not (output/'demo-mode.js').exists()
+    markup = (output/'index.html').read_text()
+    assert '<style id="lockin-styles">' in markup
+    assert (output/'static/styles.css').read_text() in markup
+    assert '<link rel="stylesheet"' not in markup
     assert json.loads((output/'version.json').read_text())['mode'] == 'real'
     assert all(p.name not in {'.env', 'operator-token.txt'} for p in output.rglob('*'))
 
