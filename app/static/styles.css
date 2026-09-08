@@ -899,3 +899,258 @@ body {
   overflow: auto;
   font-size: 12px;
 }
+#lockin-mock .lk-library {
+  padding: 36px 32px;
+  max-width: 1140px;
+  margin: auto;
+  min-height: 500px;
+}
+#lockin-mock .lk-library h2 {
+  margin: 6px 0;
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+#lockin-mock .lk-watch-search,
+#lockin-mock .lk-watch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+#lockin-mock .lk-watch-search {
+  margin: 24px 0 12px;
+}
+#lockin-mock .lk-watch-search input,
+#lockin-mock .lk-library-auth input {
+  min-width: 0;
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid var(--lk-line);
+  background: var(--lk-panel);
+  border-radius: 10px;
+  color: var(--lk-text);
+}
+#lockin-mock .lk-library-auth {
+  padding: 24px;
+  margin-top: 20px;
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  border-radius: 16px;
+}
+#lockin-mock .lk-library-auth label {
+  display: block;
+  margin-bottom: 10px;
+}
+#lockin-mock .lk-watch-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+#lockin-mock .lk-watch-card {
+  min-width: 0;
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  border-radius: 18px;
+  padding: 24px;
+}
+#lockin-mock .lk-watch-card h3 {
+  font-size: 19px;
+  margin: 12px 0 8px;
+}
+#lockin-mock .lk-watch-card p {
+  color: var(--lk-muted);
+  font-size: 12px;
+}
+#lockin-mock .lk-watch-tag {
+  font-size: 11px;
+  color: var(--lk-accent);
+  background: var(--lk-soft);
+  padding: 4px 9px;
+  border-radius: 6px;
+  display: inline-block;
+}
+#lockin-mock .lk-watch-detail-head {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--lk-line);
+  margin-bottom: 24px;
+}
+#lockin-mock .lk-watch-detail-head p {
+  color: var(--lk-muted);
+}
+#lockin-mock .lk-watch-run {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--lk-line);
+}
+#lockin-mock .lk-watch-run small {
+  display: block;
+  color: var(--lk-muted);
+}
+#lockin-mock .lk-watch-runs {
+  margin-top: 32px;
+}
+#lockin-mock .lk-watch-domains {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+#lockin-mock .lk-watch-domains span {
+  font-size: 12px;
+  background: var(--lk-soft);
+  border-radius: 6px;
+  padding: 4px 9px;
+  overflow-wrap: anywhere;
+}
+#lockin-mock .lk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+#lockin-mock #lk-similar button {
+  margin: 5px 8px 5px 0;
+}
+#lockin-mock #lk-source-mode {
+  width: 100%;
+  color: var(--lk-text);
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  padding: 12px;
+  border-radius: 10px;
+}
+#lockin-mock #lk-mission-watch {
+  color: var(--lk-accent);
+}
+#lockin-mock #lk-watch-detail .lk-result {
+  max-width: 850px;
+}
+@media (max-width: 640px) {
+  #lockin-mock .lk-library {
+    padding: 24px 18px;
+  }
+  #lockin-mock .lk-watch-list {
+    grid-template-columns: 1fr;
+  }
+  #lockin-mock .lk-chrome {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  #lockin-mock .lk-watch-search input {
+    flex-basis: 100%;
+  }
+  #lockin-mock .lk-titlebar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
+
+/* Palier 4 : horodatage complet, diagnostic de panne, incidents navigateur.
+   Reprend les variables et le rythme visuel existants, sans nouvelle palette. */
+.lk-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  line-height: 1.25;
+}
+.lk-stamp .lk-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+.lk-stamp .lk-abs {
+  font-size: 0.72rem;
+  opacity: 0.62;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lk-diag {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 2px solid currentColor;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+.lk-diag dt {
+  opacity: 0.6;
+  white-space: nowrap;
+}
+.lk-diag dd {
+  margin: 0;
+}
+.lk-diag-inconnu {
+  border-left-style: dashed;
+}
+/* Un incident vient du navigateur : il est marque autrement qu'une ligne
+   de journal, pour qu'on ne le lise jamais comme une preuve du serveur. */
+.lk-incident {
+  border-left: 2px dashed currentColor;
+  opacity: 0.95;
+}
+.lk-incident-note {
+  font-size: 0.76rem;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
+.lk-situation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid currentColor;
+  font-size: 0.86rem;
+}
+.lk-situation strong {
+  font-weight: 600;
+}
+.lk-situation[data-severity="warn"] {
+  opacity: 0.95;
+}
+.lk-situation[data-severity="error"] {
+  opacity: 1;
+}
+
+#lockin-mock .lk-brief-overview {
+  background: var(--lk-soft);
+  border: 1px solid var(--lk-line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+}
+#lockin-mock .lk-brief-heading {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .03em;
+}
+#lockin-mock .lk-brief-list {
+  margin: 10px 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+#lockin-mock .lk-brief-list li { margin: 7px 0; }
+#lockin-mock .lk-brief-label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lk-text);
+}
+#lockin-mock .lk-brief-limits { padding: 20px 0 8px; color: var(--lk-muted); }
+#lockin-mock .lk-result .lk-interest { display: block; }
+#lockin-mock .lk-source { flex-wrap: wrap; overflow-wrap: anywhere; }
+#lockin-mock .lk-usage { margin: 20px 0; padding: 22px; border: 1px solid var(--lk-border, #ddd); border-radius: 16px; }
+#lockin-mock .lk-usage h3 { margin: 0 0 18px; font-size: 15px; }
+#lockin-mock .lk-usage-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; }
+#lockin-mock .lk-usage dt { color: var(--lk-muted); font-size: 12px; }
+#lockin-mock .lk-usage dd { margin: 8px 0 0; font-size: clamp(16px, 3vw, 26px); font-weight: 600; overflow-wrap: anywhere; }
+#lockin-mock .lk-usage p { margin: 18px 0 0; color: var(--lk-muted); font-size: 12px; line-height: 1.6; }
+@media (max-width: 480px) { #lockin-mock .lk-usage-metrics { grid-template-columns: 1fr; } }
