@@ -23,6 +23,8 @@ class Scripted:
         self.calls = 0
 
     async def decide(self, context):
+        if not context.get('scope_approved'):
+            return 'accept_scope', {}, {}
         self.calls += 1
         name, args = next(self.actions, ('finish', {}))
         return name, args, {}
@@ -104,6 +106,8 @@ def test_stop_cancels_inflight_and_no_next_action(tmp_path):
         started = asyncio.Event()
         class Slow(Scripted):
             async def decide(self, context):
+                if not context.get('scope_approved'):
+                    return 'accept_scope', {}, {}
                 self.calls += 1
                 started.set()
                 await asyncio.sleep(60)
@@ -189,6 +193,8 @@ def test_dns_rejects_mixed_public_private(monkeypatch):
 def test_provider_failure_never_exposes_exception(tmp_path):
     class Bad(Scripted):
         async def decide(self, context):
+            if not context.get('scope_approved'):
+                return 'accept_scope', {}, {}
             raise RuntimeError('secret-example-value-must-not-leak')
     async def scenario():
         store = Store(str(tmp_path/'db'))
@@ -203,6 +209,8 @@ def test_provider_failure_never_exposes_exception(tmp_path):
 def test_single_active_mission(tmp_path):
     class Slow(Scripted):
         async def decide(self, context):
+            if not context.get('scope_approved'):
+                return 'accept_scope', {}, {}
             await asyncio.sleep(60)
     app = create_app(db_path=str(tmp_path/'db'), access_token=TOKEN, provider=Slow([]))
     with TestClient(app) as client:

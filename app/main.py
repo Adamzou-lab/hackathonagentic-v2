@@ -4,11 +4,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.schemas import MissionInput
-from app.storage import Store
+from app.storage import Store, TERMINAL
+from app.stream import Broker, mission_stream
 from app.agent.engine import Engine
 from app.agent.provider import AnthropicProvider
 
@@ -22,8 +23,12 @@ def create_app(*, db_path=None, access_token=None, provider=None):
     async def lifespan(app):
         store = Store(db_path or os.getenv('LOCKIN_DB_PATH', 'data/lockin.db'))
         store.recover()
+        broker = Broker()
         app.state.store = store
-        app.state.engine = Engine(store, provider or AnthropicProvider(key, os.getenv('LOCKIN_MODEL','claude-haiku-4-5')))
+        app.state.broker = broker
+        app.state.provider = provider or AnthropicProvider(
+            key, os.getenv('LOCKIN_MODEL','claude-haiku-4-5'), broker=broker)
+        app.state.engine = Engine(store, app.state.provider)
         try:
             yield
         finally:
@@ -60,6 +65,11 @@ def create_app(*, db_path=None, access_token=None, provider=None):
         if app.state.engine.active():
             raise HTTPException(409, 'Une mission est déjà en cours.')
         mid = app.state.store.create(request)
+        # Une seule mission tourne a la fois : le rattachement des fragments
+        # provisoires est donc non ambigu.
+        bind = getattr(app.state.provider, 'bind', None)
+        if callable(bind):
+            bind(mid)
         app.state.engine.launch(mid)
         return snapshot(mid)
 
@@ -77,6 +87,26 @@ def create_app(*, db_path=None, access_token=None, provider=None):
     async def events(mid: str):
         snapshot(mid)
         return app.state.store.events(mid)
+
+    @app.get('/api/missions/{mid}/stream', dependencies=[Depends(authorize)])
+    async def stream(mid: str, last_event_id: str = Header(default='')):
+        """Flux SSE authentifie. Lecture seule : ne lance jamais de mission.
+
+        Une reconnexion reprend au `Last-Event-ID` fourni, donc sans doublon et
+        sans relancer quoi que ce soit.
+        """
+        snapshot(mid)
+        try:
+            resume = int(last_event_id)
+        except (TypeError, ValueError):
+            resume = 0
+        generator = mission_stream(app.state.store, app.state.broker, mid,
+                                   last_seq=max(0, resume), terminal=TERMINAL)
+        return StreamingResponse(generator, media_type='text/event-stream', headers={
+            'Cache-Control': 'no-store',
+            'X-Accel-Buffering': 'no',
+            'Connection': 'keep-alive',
+        })
 
     static = Path(__file__).parent / 'static'
     app.mount('/static', StaticFiles(directory=str(static), check_dir=False), name='static')

@@ -21,6 +21,17 @@ class Engine:
         self.store, self.provider = store, provider
         self.reader_factory = reader_factory
         self.tasks = {}
+        self.disabled_tools = frozenset()
+
+    def finish_pending_action(self, mid, code):
+        """Fermer aussi la trace d'un outil interrompu, sans exposer l'exception."""
+        d = self.store.get(mid)
+        if d.get('current_action') is not None:
+            name = d['current_action']
+            d['current_action'] = None
+            d['had_errors'] = True
+            self.store.save(d, 'action_finished', {'tool':name,
+                'action_number':d['actions_used'], 'result':{'error':code}})
 
     def active(self):
         return any(not t.done() for t in self.tasks.values())
@@ -104,6 +115,8 @@ class Engine:
         return result
 
     async def execute(self, mid, name, raw, reader):
+        if name in self.disabled_tools:
+            raise ToolFailure('tool_disabled_for_test')
         if name == 'search_web':
             args = SearchInput.model_validate(raw)
             self.reserve(mid, 'model_calls_used', 60, 'model_started')
@@ -136,6 +149,7 @@ class Engine:
 
     async def run(self, mid):
         history = []
+        scope_approved = False
         reader = self.reader_factory(lambda: self.reserve(mid, 'network_requests_used', 200, 'network_started'))
         try:
             d = self.guard(mid)
@@ -147,13 +161,30 @@ class Engine:
                     raise Halt('budget_exhausted')
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
-                context = {'mission':{k:d[k] for k in ['subject','domains','created_at']},
+                context = {'scope_approved':scope_approved, 'mission':{k:d[k] for k in ['subject','domains','created_at']},
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
                            'recent_results':history[-4:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context))
                 d = self.guard(mid)
                 self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
+                if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
+                    reasons = {
+                        'out_of_scope': 'Lockin réalise des veilles documentaires sur des sources publiques. Cette demande sort de ce cadre.',
+                        'unsafe_request': 'Cette demande exige une action ou un accès non autorisé. Reformulez une demande de veille sur des sources publiques.',
+                        'clarification_required': 'Le périmètre de cette demande ne peut pas être validé. Précisez le sujet de veille et les informations recherchées.'}
+                    code = raw.get('code') if isinstance(raw, dict) and set(raw) == {'code'} else None
+                    code = code if isinstance(code, str) and code in reasons else 'clarification_required'
+                    d['refusal_reason'] = reasons[code]
+                    self.store.save(d, 'mission_refused', {'code':code, 'reason':reasons[code]})
+                    self.store.finish(mid, 'refused')
+                    return
+                if name == 'accept_scope':
+                    if scope_approved or raw != {}:
+                        raise ToolFailure('invalid_scope_decision')
+                    scope_approved = True
+                    self.store.save(d, 'scope_accepted', {})
+                    continue
                 if name == 'finish':
                     if raw:
                         raise ToolFailure('invalid_finish')
@@ -169,36 +200,44 @@ class Engine:
                 except ValidationError:
                     parameters = {'validation':'invalid_input'}
                 self.store.save(d, 'action_started', {'tool':name, 'action_number':d['actions_used'], 'parameters':parameters})
+                fatal = None
                 try:
                     result = await self.execute(mid, name, raw, reader)
-                except (ToolFailure, ValidationError) as exc:
-                    code = exc.code if isinstance(exc, ToolFailure) else 'invalid_input'
+                except (Halt, asyncio.CancelledError):
+                    raise
+                except Exception as exc:
+                    code = exc.code if isinstance(exc, ToolFailure) else ('invalid_input' if isinstance(exc, ValidationError) else 'execution_error')
                     result = {'error': code}
                     d = self.guard(mid)
                     d['had_errors'] = True
-                    if name == 'read_page' and isinstance(raw.get('url'), str):
+                    if name == 'read_page' and isinstance(raw, dict) and isinstance(raw.get('url'), str):
                         try:
                             url = check_url(raw['url'], d['domains'])
                             d['sources'].append({'url':url, 'status':'error', 'error':code, 'source_id':None})
                         except ToolFailure:
                             pass
                     self.store.save(d, 'tool_error', {'tool':name, 'code':code})
-                    if code.startswith('anthropic_http_') or code == 'web_search_unavailable':
-                        raise ToolFailure(code)
+                    if code.startswith('anthropic_http_') or code in {'web_search_unavailable', 'execution_error'}:
+                        fatal = code
                 d = self.guard(mid)
                 d['current_action'] = None
-                self.store.save(d, 'action_finished', {'tool':name, 'result':result if name != 'read_page' else
+                self.store.save(d, 'action_finished', {'tool':name, 'action_number':d['actions_used'], 'result':result if name != 'read_page' else
                                 {k:v for k,v in result.items() if k != 'text'}})
+                if fatal:
+                    raise ToolFailure(fatal)
                 # Bound context even when recent results contain large pages.
                 history.append({'tool':name, 'result':result})
         except asyncio.CancelledError:
+            self.finish_pending_action(mid, 'cancelled')
             self.store.finish(mid, 'stopped' if self.store.get(mid)['status'] == 'stopping' else 'failed',
                               None if self.store.get(mid)['status'] == 'stopping' else 'Processus arrêté.')
         except Halt as halt:
+            self.finish_pending_action(mid, halt.status)
             self.store.finish(mid, halt.status)
         except Exception as exc:
             # Never return upstream exception strings, headers, credentials or response bodies.
             code = exc.code if isinstance(exc, ToolFailure) else 'execution_error'
+            self.finish_pending_action(mid, code)
             self.store.finish(mid, 'failed', code)
 
     async def close(self):
