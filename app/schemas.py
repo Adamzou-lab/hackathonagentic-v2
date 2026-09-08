@@ -64,7 +64,14 @@ class ReadInput(StrictModel):
 
 class Evidence(StrictModel):
     source_id: str = Field(max_length=64)
-    quote: str = Field(min_length=10, max_length=500)
+    quote: str | None = Field(default=None, min_length=10, max_length=500)
+    passage_id: str | None = Field(default=None, min_length=20, max_length=20)
+
+    @model_validator(mode='after')
+    def one_reference(self):
+        if (self.quote is None) == (self.passage_id is None):
+            raise ValueError('Fournir passage_id ou quote, exclusivement.')
+        return self
 
 
 class FindingDraft(StrictModel):

@@ -14,6 +14,7 @@ from app.storage.watches import finding_key
 from app.agent.discovery import DiscoveryInput, SelectionInput, normalize_candidate_url
 from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
 from app.agent.failures import failure_code, must_stop
+from app.agent.evidence import passages
 
 
 class Halt(Exception):
@@ -181,7 +182,10 @@ class Engine:
         finding = args.finding.model_dump()
         for ev in finding['evidence']:
             page = d['pages'].get(ev['source_id'])
-            if not page or ev['quote'] not in page['text']:
+            pid = ev.pop('passage_id', None)
+            if pid and page:
+                ev['quote'] = next((p['quote'] for p in passages(page) if p['passage_id'] == pid), None)
+            if not page or not ev['quote'] or ev['quote'] not in page['text']:
                 raise ToolFailure('invalid_evidence')
         # Dates are untrusted until backed by a publication field on a cited page.
         available = [d['pages'][e['source_id']].get('published_at') for e in finding['evidence']]
@@ -296,6 +300,10 @@ class Engine:
             args = ReadInput.model_validate(raw)
             d = self.guard(mid)
             url = check_url(args.url, d['domains'])
+            cached = next((p for p in d['pages'].values() if p['url'] == url), None)
+            if cached:
+                self.store.save(d, 'page_reused', {'source_id':cached['source_id'], 'url':url})
+                return cached
             if d['attempts'].get(url, 0) >= 2:
                 raise ToolFailure('attempts_exhausted')
             d['attempts'][url] = d['attempts'].get(url, 0) + 1
@@ -360,6 +368,10 @@ class Engine:
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
                 context = {'scope_approved':scope_approved, 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
+                           'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
+                               'title':p.get('title',''), 'published_at':p.get('published_at'),
+                               'passages':passages(p)[:12]} for p in list(d['pages'].values())[-2:]],
+                           'failed_pages':[{'url':s['url'], 'error':s.get('error')} for s in d['sources'] if s.get('error')][-10:],
                            'source_candidates':d.get('source_candidates',[]),
                            'known_findings':d.get('known_findings',[]),
                            'known_findings_truncated':d.get('known_findings_truncated',False),
@@ -436,7 +448,8 @@ class Engine:
                     failure.recorded = True
                     raise failure
                 # Bound context even when recent results contain large pages.
-                history.append({'tool':name, 'result':result})
+                history.append({'tool':name, 'result':
+                    {k:v for k,v in result.items() if k != 'text'} if name == 'read_page' else result})
         except Abandoned:
             return
         except asyncio.CancelledError:

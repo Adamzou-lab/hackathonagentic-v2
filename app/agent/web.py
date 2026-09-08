@@ -112,7 +112,8 @@ class WebReader:
         published_at = published.get('content', '')[:40] if published else None
         for tag in soup(['script', 'style', 'noscript', 'nav', 'footer']):
             tag.decompose()
-        content = soup.get_text(' ', strip=True)
+        body = soup.find('article') or soup.find('main') or soup
+        content = body.get_text(' ', strip=True)
         return dict(source_id=hashlib.sha256(final.encode()).hexdigest()[:24], url=final,
                     title=title, text=content[:30000], retrieved_at=now(), published_at=published_at,
                     content_hash=hashlib.sha256(content.encode()).hexdigest(), truncated=len(content)>30000,

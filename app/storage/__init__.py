@@ -201,6 +201,15 @@ class Store(WatchStore):
                       remaining_seconds=max(0, duration-elapsed),
                       actions_remaining=max(0, data['action_budget']-data['actions_used']), events=self.events(mid))
         text = '\n\n'.join(f"{f['title']}\n{f['summary']}\nIntérêt pratique : {f['developer_impact']}" for f in data['findings'])
+        empty = 'Aucun constat validé pour le moment.'
+        if data['status'] == 'budget_exhausted':
+            empty = 'Budget épuisé avant la sauvegarde d’un constat validé. Consultez le journal pour voir les lectures et les erreurs rencontrées.'
+        elif data['status'] == 'deadline_reached':
+            empty = 'Durée limite atteinte avant la sauvegarde d’un constat validé.'
+        elif data['status'] == 'completed':
+            empty = 'Recherche terminée sans constat étayé à conserver sur les sources consultées.'
+        elif data['status'] in {'failed','stopped'}:
+            empty = 'Mission interrompue avant la sauvegarde d’un constat validé. Consultez le journal.'
         public['summary'] = {'partial': data['status'] != 'completed' or data['had_errors'],
-                             'text': data.get('refusal_reason') or text or 'Aucun résultat exploitable pour le moment.'}
+                             'text': data.get('refusal_reason') or text or empty}
         return public

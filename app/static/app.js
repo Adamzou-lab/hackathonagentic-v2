@@ -553,6 +553,8 @@
       : "SYNTHÈSE EN CONSTRUCTION";
     const results = q("#lk-findings");
     results.replaceChildren();
+    results.append(briefOverview(state.findings));
+    results.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
     for (const finding of state.findings) {
       const article = el("article", "lk-result");
       const sources = el("div", "lk-source");
@@ -567,8 +569,7 @@
       article.append(
         sources,
         el("h3", "", finding.title),
-        el("p", "", finding.summary),
-        el("div", "lk-interest", finding.developer_impact),
+        ...briefFinding(finding),
         el("div", "lk-caveat", confidenceLabel(finding)),
       );
       for (const caveat of finding.caveats || [])
@@ -586,10 +587,11 @@
           "p",
           "lk-empty",
           done
-            ? "Aucun résultat exploitable trouvé pour cette mission."
+            ? state.summary?.text || "Aucun constat validé. Consultez le journal de la mission."
             : "Recherche en cours. Les constats apparaîtront après lecture et vérification des sources.",
         ),
       );
+    results.append(briefLimits(state.findings, state.summary.partial));
     const sourceHost = q("#lk-sources");
     sourceHost.replaceChildren();
     for (const source of state.sources) {
@@ -1029,6 +1031,8 @@
         ),
       );
       host.append(header);
+      host.append(briefOverview(watch.findings || []));
+      host.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
       for (const finding of watch.findings || []) {
         const article = el("article", "lk-result");
         const sourceLinks = el("div", "lk-source");
@@ -1038,8 +1042,7 @@
         article.append(
           sourceLinks,
           el("h3", "", finding.title),
-          el("p", "", finding.summary),
-          el("div", "lk-interest", finding.developer_impact),
+          ...briefFinding(finding),
           el("div", "lk-caveat", confidenceLabel(finding)),
         );
         for (const caveat of finding.caveats || [])
@@ -1069,6 +1072,7 @@
             "Aucun constat enregistré pour le moment. Les recherches et leurs éventuelles erreurs sont consultables ci-dessous.",
           ),
         );
+      host.append(briefLimits(watch.findings || [], (watch.runs || []).some(run => run.status !== "completed")));
       const runs = el("section", "lk-watch-runs");
       runs.append(el("h3", "", "Historique des recherches"));
       for (const run of [...(watch.runs || [])].sort(
@@ -1252,6 +1256,37 @@
         .querySelectorAll("#lk-similar button")
         .forEach((b) => (b.disabled = false));
     }
+  }
+  function briefOverview(findings) {
+    const section = el("section", "lk-brief-overview");
+    section.append(el("h3", "lk-brief-heading", "01 · À retenir"));
+    if (!findings.length) {
+      section.append(el("p", "lk-caveat", "Les points clés apparaîtront dès qu’un constat sera sauvegardé avec sa preuve."));
+      return section;
+    }
+    const list = el("ol", "lk-brief-list");
+    for (const finding of findings.slice(0, 3)) list.append(el("li", "", finding.title));
+    section.append(list, el("p", "lk-caveat", `${findings.length} constat(s) documenté(s) · Les dates et les preuves sont précisées ci-dessous.`));
+    return section;
+  }
+  function briefFinding(finding) {
+    const impact = el("div", "lk-interest");
+    impact.append(el("strong", "lk-brief-label", "Ce que cela implique"), el("p", "", finding.developer_impact));
+    return [el("strong", "lk-brief-label", "Ce que dit la source"), el("p", "", finding.summary), impact];
+  }
+  function briefLimits(findings, partial) {
+    const section = el("section", "lk-brief-limits");
+    section.append(el("h3", "lk-brief-heading", "03 · Limites et points à vérifier"));
+    const list = el("ul", "lk-brief-list");
+    if (partial) list.append(el("li", "", "Recherche partielle : la couverture du sujet n’est pas exhaustive. Consultez le statut et le journal."));
+    const undated = findings.filter(f => f.date_status === "unknown" || !f.event_date).length;
+    const old = findings.filter(f => f.date_status === "outside_window").length;
+    if (undated) list.append(el("li", "", `${undated} constat(s) sans date confirmée : leur récence n’est pas établie.`));
+    if (old) list.append(el("li", "", `${old} constat(s) hors période : à lire comme contexte, pas comme nouveautés récentes.`));
+    if (findings.some(f => f.confidence === "single_source")) list.append(el("li", "", "Certains constats reposent sur une seule source : vérifiez-les avant une décision importante."));
+    list.append(el("li", "", "Les implications sont une interprétation. Les extraits cités et leurs liens permettent de vérifier les faits."));
+    section.append(list);
+    return section;
   }
   function updateSourceMode() {
     const automatic = q("#lk-source-mode").value === "auto";

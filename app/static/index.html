@@ -77,7 +77,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           <div class="lk-divider"></div>
           <div class="lk-fieldhead">
             <label id="lk-packslabel">Pack de recherche</label
-            ><span id="lk-packstate" aria-live="polite">Approfondi</span>
+            ><span id="lk-packstate" aria-live="polite">Rapide</span>
           </div>
           <div class="lk-packs" role="group" aria-labelledby="lk-packslabel">
             <button
@@ -86,7 +86,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               data-budget="10"
               data-duration="5"
               data-name="Rapide"
-              aria-pressed="false"
+              aria-pressed="true"
             >
               <strong>Rapide</strong><small>10 actions · 5 min</small>
             </button>
@@ -106,7 +106,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               data-budget="100"
               data-duration="30"
               data-name="Approfondi"
-              aria-pressed="true"
+              aria-pressed="false"
             >
               <strong>Approfondi</strong><small>100 actions · 30 min</small>
             </button>
@@ -118,7 +118,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                 ><input
                   id="lk-budget"
                   type="number"
-                  value="100"
+                  value="10"
                   min="1"
                   max="100"
                   step="1"
@@ -132,7 +132,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                 min="1"
                 max="100"
                 step="1"
-                value="100"
+                value="10"
                 aria-label="Régler le budget d’actions"
               />
               <div class="lk-rangebounds">
@@ -145,7 +145,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                 ><input
                   id="lk-duration"
                   type="number"
-                  value="30"
+                  value="5"
                   min="1"
                   max="30"
                   step="1"
@@ -159,7 +159,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                 min="1"
                 max="30"
                 step="1"
-                value="30"
+                value="5"
                 aria-label="Régler la durée en minutes"
               />
               <div class="lk-rangebounds">
