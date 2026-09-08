@@ -8,6 +8,7 @@ from app.schemas import MissionInput
 from app.storage import Store
 from app.agent.engine import Engine
 from app.agent.web import ToolFailure, check_url
+from app.costs import estimate_request_cost
 
 TOKEN = 'test-operator-token-only-' + 'x'*32
 AUTH = {'Authorization':'Bearer '+TOKEN}
@@ -229,4 +230,60 @@ def test_search_keeps_hits_when_provider_reaches_search_cap():
     async def scenario():
         hits, usage = await Provider('test','test').search('news',3,['example.com'])
         assert hits[0]['url'] == PAGE['url']
+    asyncio.run(scenario())
+
+
+def test_haiku_45_request_cost_includes_tokens_cache_and_web_search():
+    cost = estimate_request_cost('claude-haiku-4-5', {
+        'input_tokens': 1_000_000,
+        'output_tokens': 1_000_000,
+        'cache_creation_input_tokens': 1_000_000,
+        'cache_read_input_tokens': 1_000_000,
+        'server_tool_use': {'web_search_requests': 2},
+    })
+    assert cost['amount_usd'] == 7.37
+    assert cost['web_search_requests'] == 2
+    assert cost['estimated'] is True
+
+
+def test_unknown_model_reports_tokens_without_inventing_price():
+    cost = estimate_request_cost('modele-prive', {
+        'input_tokens': 123, 'output_tokens': 45,
+    })
+    assert cost['amount_usd'] is None
+    assert cost['input_tokens'] == 123
+    assert cost['estimated'] is False
+
+
+def test_invalid_usage_counters_cannot_create_negative_cost():
+    cost = estimate_request_cost('claude-haiku-4-5', {
+        'input_tokens': -10,
+        'output_tokens': True,
+        'cache_creation_input_tokens': '1000',
+        'server_tool_use': {'web_search_requests': 1},
+    })
+    assert cost['amount_usd'] == 0.01
+    assert cost['input_tokens'] == 0
+    assert cost['output_tokens'] == 0
+
+
+def test_last_request_cost_is_exposed_in_mission_snapshot(tmp_path):
+    class Metered(Scripted):
+        model = 'claude-haiku-4-5'
+
+        async def decide(self, context):
+            if not context.get('scope_approved'):
+                return 'accept_scope', {}, {'input_tokens': 100, 'output_tokens': 20}
+            return 'finish', {}, {'input_tokens': 200, 'output_tokens': 30}
+
+    async def scenario():
+        store = Store(str(tmp_path/'db'))
+        mid = store.create(MissionInput(**REQUEST))
+        await Engine(store, Metered([])).run(mid)
+        state = store.snapshot(mid)
+        assert state['last_request_cost']['amount_usd'] == 0.00035
+        assert state['last_request_cost']['input_tokens'] == 200
+        assert state['total_estimated_cost_usd'] == 0.00055
+        event = [e for e in state['events'] if e['kind'] == 'model_finished'][-1]
+        assert event['data']['request_cost'] == state['last_request_cost']
     asyncio.run(scenario())
