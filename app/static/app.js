@@ -71,6 +71,11 @@
     select_sources: "Sélection des domaines",
   };
   const eventNames = {
+    operation_started: "Appel externe commencé",
+    operation_finished: "Appel externe terminé",
+    dependency_failed: "Panne détectée",
+    heartbeat: "Signe de vie du moteur",
+    recovery_detected: "Interruption constatée au redémarrage",
     scope_accepted: "Périmètre validé",
     mission_refused: "Demande refusée",
     created: "Mission créée",
@@ -362,6 +367,9 @@
   }
   function eventText(event) {
     const d = event.data || {};
+    if (event.kind === "recovery_detected")
+      return "Dernier signe de vie : " + window.LockinJournal.stamp(d.last_seen_at).absolute + ". Heure exacte de coupure inconnue. Aucune relance automatique.";
+    if (d.operation) return d.operation + (d.code ? " · " + d.code : "") + (d.outcome ? " · " + d.outcome : "");
     if (d.reason) return d.reason;
     if (d.code) return (tools[d.tool] || "Action") + " · " + d.code;
     if (d.result?.error)
@@ -404,7 +412,7 @@
   function eventRow(event, state) {
     const row = el("div", "lk-logrow");
     row.dataset.kind = event.kind;
-    const code = event.data?.result?.error || event.data?.code;
+    const code = window.LockinJournal.failureCode(event);
     const failureLabel =
       code === "cancelled"
         ? "Appel interrompu"
@@ -427,13 +435,13 @@
       el(
         "strong",
         "",
-        code ? failureLabel : eventNames[event.kind] || event.kind,
+        eventNames[event.kind] || (code ? failureLabel : event.kind),
       ),
     );
     const body = el("div", "lk-logbody");
     body.append(el("p", "", eventText(event)));
     const d = event.data || {};
-    const panne = J.diagnose(J.failureCode(event));
+    const panne = J.diagnoseEvent(event);
     if (panne) {
       const bloc = el("dl", "lk-diag" + (panne.known ? "" : " lk-diag-inconnu"));
       bloc.append(
@@ -443,18 +451,18 @@
       );
       body.append(bloc);
     }
-    if (d.parameters !== undefined || d.result !== undefined) {
+    if (d.parameters !== undefined || d.result !== undefined || d.operation || d.reaction) {
       const details = el("details", "");
       details.open = true;
       details.append(
         el(
           "summary",
           "",
-          d.parameters !== undefined ? "Arguments envoyés" : "Résultat reçu",
+          d.parameters !== undefined ? "Arguments envoyés" : d.result !== undefined ? "Résultat reçu" : "Détails de l’événement",
         ),
       );
       details.append(
-        el("pre", "", JSON.stringify(d.parameters ?? d.result, null, 2)),
+        el("pre", "", JSON.stringify(d.parameters ?? d.result ?? d, null, 2)),
       );
       body.append(details);
     }

@@ -41,7 +41,7 @@
 
   /* Dépendance concernée, cause, réaction de l'agent, pour chaque code connu. */
   const PANNES = {
-    timeout:                     ["Fournisseur ou site distant", "Aucune réponse dans le délai imparti", "Appel abandonné, la boucle continue"],
+    timeout:                     ["Fournisseur ou site distant", "Aucune réponse dans le délai imparti", "Appel interrompu ; voir la réaction enregistrée par le serveur"],
     attempts_exhausted:          ["Site distant", "Deux tentatives ont échoué sur cette source", "Source abandonnée pour toute la mission"],
     document_redirect_rejected:  ["Site distant", "La page redirige ailleurs avant d'être lue", "Redirection refusée, page non lue"],
     blocked_url:                 ["Contrôle de périmètre", "Adresse hors des domaines autorisés", "Requête refusée avant tout accès réseau"],
@@ -81,8 +81,26 @@
 
   /* Code d'échec porté par un évènement, quel que soit l'endroit où il figure. */
   function failureCode(event) {
+    if (event?.kind === "mission_refused") return null;
     const d = (event && event.data) || {};
     return d.code || (d.result && d.result.error) || d.error || null;
+  }
+
+  function diagnoseEvent(event) {
+    const d = event?.data || {};
+    const result = diagnose(failureCode(event));
+    if (!result) return null;
+    const dependencies = {model_provider:"Fournisseur du modèle", web_page:"Site distant",
+      dns:"Résolution DNS", sqlite:"Stockage local", engine:"Moteur", tool:"Outil"};
+    if (d.dependency) result.dependency = dependencies[d.dependency] || d.dependency;
+    if (d.reaction === "stop" || d.status === "failed") result.reaction = "Mission interrompue ; résultats acquis conservés";
+    if (d.reaction === "continue") result.reaction = "Poursuite autorisée sous les mêmes budgets";
+    if (result.code === "cancellation_unconfirmed") {
+      result.cause = "La dépendance n’a pas confirmé son annulation";
+      result.reaction = "Arrêt non confirmé ; nouvelles missions bloquées";
+    }
+    if (d.outcome === "unknown") result.reaction = "Résultat inconnu ; aucune action rejouée";
+    return result;
   }
 
   /* Quatre situations distinctes, à ne jamais confondre.
@@ -146,7 +164,7 @@
     };
   }
 
-  const api = { stamp, elapsed, zone, diagnose, failureCode, situation, incident, buildExport, PANNES };
+  const api = { stamp, elapsed, zone, diagnose, diagnoseEvent, failureCode, situation, incident, buildExport, PANNES };
   if (typeof module === "object" && module.exports) module.exports = api;
   root.LockinJournal = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

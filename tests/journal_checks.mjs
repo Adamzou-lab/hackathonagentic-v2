@@ -109,4 +109,18 @@ test("export sans mission ne plante pas", () => {
   assert.deepEqual(out.events, []);
 });
 
+test("la reaction du serveur prime sur le code timeout", () => {
+  const model = J.diagnoseEvent({kind:"dependency_failed", data:{code:"timeout", dependency:"model_provider", reaction:"stop"}});
+  const page = J.diagnoseEvent({kind:"dependency_failed", data:{code:"timeout", dependency:"web_page", reaction:"continue"}});
+  assert.match(model.reaction, /interrompue/);
+  assert.equal(model.dependency, "Fournisseur du modèle");
+  assert.match(page.reaction, /Poursuite autorisée/);
+});
+
+test("refus utilisateur et arret non confirme ne deviennent pas de fausses pannes outil", () => {
+  assert.equal(J.diagnoseEvent({kind:"mission_refused", data:{code:"out_of_scope"}}), null);
+  const failure = J.diagnoseEvent({kind:"finished", data:{status:"failed",error:"cancellation_unconfirmed"}});
+  assert.match(failure.reaction, /Arrêt non confirmé/);
+});
+
 console.log(`\n${n} verifications passees.`);
