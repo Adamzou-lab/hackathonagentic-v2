@@ -4,6 +4,7 @@
   const root = document.getElementById("lockin-mock"),
     q = (s) => root.querySelector(s);
   const demo = new URLSearchParams(location.search).has("demo");
+  const apiBase = document.querySelector('meta[name="lockin-api-base"]')?.content || "";
   const demoApi = demo ? window.createLockinDemo() : null;
   const journalNodes = new Map();
   // Incidents constates par le navigateur. Volontairement separes des
@@ -317,7 +318,7 @@
     const controller = new AbortController(),
       timeout = setTimeout(() => controller.abort(), 20000);
     try {
-      const response = await fetch("/api/" + path, {
+      const response = await fetch(apiBase + "/api/" + path, {
         ...options,
         headers: {
           "Content-Type": "application/json",
@@ -685,7 +686,7 @@
     try {
       activity();
       const response = await fetch(
-        "/api/missions/" + encodeURIComponent(id) + "/stream",
+        apiBase + "/api/missions/" + encodeURIComponent(id) + "/stream",
         {
           headers: {
             Authorization: "Bearer " + token,

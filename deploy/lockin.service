@@ -1,0 +1,24 @@
+[Unit]
+Description=Lockin research agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lockin
+Group=lockin
+WorkingDirectory=/opt/lockin/current
+EnvironmentFile=/etc/lockin/lockin.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/lockin/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8018 --workers 1 --no-access-log
+Restart=no
+TimeoutStopSec=25
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lockin /var/log/lockin
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

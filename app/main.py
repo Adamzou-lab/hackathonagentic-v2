@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import MissionInput
 from app.storage import Store, TERMINAL, StorageUnavailable
@@ -37,6 +38,19 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
             store.db.close()
 
     app = FastAPI(title='Lockin', version='0.1.0', lifespan=lifespan)
+    origins = [origin.strip() for origin in os.getenv('LOCKIN_ALLOWED_ORIGINS', '').split(',') if origin.strip()]
+    if origins:
+        app.add_middleware(CORSMiddleware, allow_origins=origins,
+                           allow_methods=['GET', 'POST'],
+                           allow_headers=['Authorization', 'Content-Type', 'Last-Event-ID'],
+                           allow_credentials=False)
+
+    @app.middleware('http')
+    async def private_api_responses(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith('/api/') or request.url.path == '/health':
+            response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @app.exception_handler(StorageUnavailable)
     async def storage_unavailable(request, exc):
