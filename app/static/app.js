@@ -100,6 +100,7 @@
     finished: "Mission terminée",
   };
   let domains = ["openai.com", "www.anthropic.com", "docs.langchain.com"];
+  let publicAccess = false;
   let mission = null,
     token = "",
     timer = null,
@@ -346,7 +347,7 @@
           503: "Le service de recherche n’est pas encore configuré.",
         };
         const error = new Error(
-          messages[response.status] ||
+          (data.detail?.code === "api_disabled" ? data.detail.message : messages[response.status]) ||
             "Le serveur est momentanément indisponible.",
         );
         error.status = response.status;
@@ -860,7 +861,7 @@
     q("#lk-library").scrollIntoView({ block: "start" });
     libraryError("");
     pendingLibraryWatch = watchId;
-    if (!token && !demo) {
+    if (!token && !demo && !publicAccess) {
       libraryGeneration++;
       q("#lk-library-auth").hidden = false;
       q("#lk-watch-search").hidden = true;
@@ -1227,8 +1228,6 @@
     try {
       const config = await api("config");
       renderApiControl(config);
-      if (config.api_enabled === false)
-        throw new Error("L’API est désactivée. Réactivez-la en haut de la page pour lancer une recherche.");
       if (!config.provider_ready)
         throw new Error(
           "La clé Anthropic n’est pas configurée sur le serveur.",
@@ -1264,6 +1263,12 @@
   let apiEnabled = null;
   let changingApi = false;
   function renderApiControl(config) {
+    if (typeof config.public_access === "boolean") {
+      publicAccess = config.public_access;
+      q("#lk-auth").hidden = publicAccess;
+      q("#lk-access").required = !publicAccess;
+      if (publicAccess) q("#lk-library-auth").hidden = true;
+    }
     apiEnabled = config.api_enabled;
     const button = q("#lk-api-toggle");
     button.disabled = changingApi || typeof apiEnabled !== "boolean";
@@ -1276,7 +1281,7 @@
       : "API désactivée · Aucune nouvelle recherche payante. Mes veilles reste accessible. Les appels déjà envoyés peuvent avoir été facturés.";
   }
   async function refreshApiControl() {
-    if (demo || changingApi || !token) return;
+    if (demo || changingApi) return;
     try { renderApiControl(await api("config")); }
     catch {
       apiEnabled = null;
@@ -1435,6 +1440,7 @@
   drawDomains();
   updateSourceMode();
   updateLimits();
+  if (!demo) refreshApiControl();
   if (window.lucide)
     window.lucide.createIcons({ attrs: { width: 16, height: 16 } });
 })();

@@ -24,6 +24,7 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
     token = os.getenv('LOCKIN_ACCESS_TOKEN', '') if access_token is None else access_token
     key = os.getenv('ANTHROPIC_API_KEY', '')
     configured = provider is not None or bool(key)
+    public_access = os.getenv('LOCKIN_PUBLIC_ACCESS', '').lower() == 'true'
 
     @asynccontextmanager
     async def lifespan(app):
@@ -65,6 +66,8 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
                             status_code=503)
 
     def authorize(authorization: str = Header(default='')):
+        if public_access:
+            return
         if len(token) < 32:
             raise HTTPException(503, 'LOCKIN_ACCESS_TOKEN doit contenir au moins 32 caractères.')
         if not secrets.compare_digest(authorization.encode(), ('Bearer '+token).encode()):
@@ -86,6 +89,7 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
     @app.get('/api/config', dependencies=[Depends(authorize)])
     async def config():
         return {'provider_ready':configured, 'max_domains':5, 'max_actions':100,
+                'public_access':public_access,
                 **app.state.store.api_control(),
                 'max_duration_minutes':30, 'poll_interval_ms':1000}
 
@@ -110,6 +114,8 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
     @app.post('/api/missions', status_code=202, dependencies=[Depends(authorize)])
     async def create(request: MissionInput):
         app.state.store.check_available()
+        if not app.state.store.api_control()['api_enabled']:
+            raise HTTPException(409, {'code':'api_disabled', 'message':'API désactivée. Réactivez-la pour lancer une recherche. Aucun appel payant n’a été effectué.'})
         if (app.state.engine.closing or app.state.engine.storage_failed or
                 app.state.engine.unconfirmed_stops):
             raise HTTPException(503, 'Agent arrêté ; intervention opérateur requise.')
@@ -124,8 +130,6 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
                 app.state.store.watch(request.watch_id)
             except KeyError:
                 raise HTTPException(404, 'Veille introuvable.')
-        if not app.state.store.api_control()['api_enabled']:
-            raise HTTPException(409, 'API désactivée par un opérateur. Les veilles enregistrées restent consultables.')
         if not configured:
             raise HTTPException(503, 'ANTHROPIC_API_KEY manquante côté serveur.')
         if app.state.engine.active():

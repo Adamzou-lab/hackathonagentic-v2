@@ -32,3 +32,16 @@ réelle bornée avec journal et streaming. Un dossier de release immuable et un
 lien `/opt/lockin/current` permettent un retour à la release précédente.
 Les missions de production sont conservées sur le VPS ; les veilles locales ne
 sont pas transférées automatiquement.
+# Phase de test publique
+
+`LOCKIN_PUBLIC_ACCESS=true` dans `/etc/lockin/lockin.env` ouvre les recherches,
+les veilles partagées, leur journal et le bouton global de coupure sans jeton.
+Ce mode a été demandé pour la démonstration devant l’examinateur. La clé Anthropic
+reste exclusivement sur le serveur. Aucun secret ne doit entrer dans le build Netlify.
+
+Pour rétablir l’accès privé après les tests : remettre cette variable à `false`,
+puis redémarrer `lockin`. Le jeton opérateur redevient obligatoire.
+L’état activé/désactivé de l’API est conservé dans SQLite après redémarrage.
+Quand l’API est coupée, toute demande de lancement est refusée par le serveur
+avec `api_disabled`, même si une veille semblable est en cache. La consultation
+des veilles enregistrées reste possible et la réactivation ne relance aucune mission.
