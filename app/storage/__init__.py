@@ -115,6 +115,7 @@ class Store(WatchStore):
         data = dict(id=mid, watch_id=wid, **inputs, **previous, status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
                     actions_used=0, model_calls_used=0, network_requests_used=0,
+                    token_budget=16000 if request.action_budget <= 10 else (24000 if request.action_budget <= 20 else 40000),
                     current_action=None, current_operation=None, error=None, sources=[], findings=[], pages={},
                     keys={}, attempts={}, had_errors=False)
         self.save(data, 'created', {'request': request.model_dump()})
@@ -206,6 +207,8 @@ class Store(WatchStore):
         empty = 'Aucun constat validé pour le moment.'
         if data['status'] == 'budget_exhausted':
             empty = 'Budget épuisé avant la sauvegarde d’un constat validé. Consultez le journal pour voir les lectures et les erreurs rencontrées.'
+            if any(e['kind'] == 'token_budget_exhausted' for e in public['events']):
+                empty = 'Seuil de tokens atteint : aucun nouvel appel IA lancé. Aucun constat validé avant cet arrêt.'
         elif data['status'] == 'deadline_reached':
             empty = 'Durée limite atteinte avant la sauvegarde d’un constat validé.'
         elif data['status'] == 'completed':

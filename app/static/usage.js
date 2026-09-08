@@ -12,6 +12,7 @@
     if (!u) parts.push("Mesures de tokens indisponibles pour cette mission.");
     else if (!u.tokens_complete) parts.push("Consommation incomplète : un appel est en cours ou sa mesure n’a pas été reçue.");
     else parts.push("Tokens mesurés, cache inclus. Les appels comptent les tentatives, même en échec.");
+    if (u?.token_budget) parts.push(`Seuil d’arrêt : ${number(u.token_budget)} tokens. Vérifié entre les appels ; le dernier appel peut dépasser ce seuil.`);
     const observed = u?.observed_tokens;
     if (observed) parts.push(`Détail reçu : ${number(observed.input_tokens)} en entrée · ${number(observed.output_tokens)} en sortie · ${number(observed.cache_read_input_tokens)} lus en cache · ${number(observed.cache_creation_input_tokens)} écrits en cache.`);
     return {

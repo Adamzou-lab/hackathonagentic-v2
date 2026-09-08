@@ -139,7 +139,7 @@ def test_each_phase_exposes_only_its_model_choices(approved, auto, domains,
     mode, messages, system, tools = provider.calls[0]
     assert mode == ('streaming' if streaming else 'ordinary')
     assert {tool['name'] for tool in tools} == expected
-    assert json.loads(messages[0]['content']) == context
+    assert json.loads(messages[0]['content']) == (context if approved else {'mission': context['mission'], 'scope_approved': False})
     if approved:
         assert 'known_findings' in system and 'related_finding_id' in system
 

@@ -26,4 +26,5 @@ def usage_summary(data, events, elapsed):
         'tokens': totals if complete else None,
         'observed_tokens': totals if measured else None,
         'total_tokens': sum(totals.values()) if complete else None,
+        'token_budget': data.get('token_budget'),
     }

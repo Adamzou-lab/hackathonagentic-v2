@@ -7,6 +7,23 @@
   const apiBase = document.querySelector('meta[name="lockin-api-base"]')?.content || "";
   const demoApi = demo ? window.createLockinDemo() : null;
   const journalNodes = new Map();
+  let resultSignature = "";
+  let draftTimer = null, draftInput = "", draftText = "";
+  function clearDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    draftInput = draftText = "";
+    q("#lk-draft-input").textContent = "";
+    q("#lk-draft-text").textContent = "";
+  }
+  function paintDraft() {
+    if (draftTimer !== null) return;
+    draftTimer = setTimeout(() => {
+      draftTimer = null;
+      q("#lk-draft-input").textContent = draftInput;
+      q("#lk-draft-text").textContent = draftText;
+    }, 80);
+  }
   // Incidents constates par le navigateur. Volontairement separes des
   // evenements du serveur : ils n'ont pas de seq, ils ne font pas foi, et
   // leur horodatage est une heure de detection, pas une heure de panne.
@@ -476,6 +493,8 @@
     if (mission?.id === state.id && mission.reuse && !state.reuse)
       state = { ...state, reuse: mission.reuse };
     if (mission?.id !== state.id) {
+      clearDraft();
+      resultSignature = "";
       journalNodes.clear();
       q("#lk-draft").hidden = true;
       q("#lk-draft-input").textContent = "";
@@ -560,6 +579,9 @@
         : "SYNTHÈSE TERMINÉE"
       : "SYNTHÈSE EN CONSTRUCTION";
     const results = q("#lk-findings");
+    const signature = JSON.stringify([state.id, state.findings, state.sources, state.summary, done]);
+    if (signature !== resultSignature) {
+    resultSignature = signature;
     results.replaceChildren();
     results.append(briefOverview(state.findings));
     results.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
@@ -600,6 +622,7 @@
         ),
       );
     results.append(briefLimits(state.findings, state.summary.partial));
+    }
     const sourceHost = q("#lk-sources");
     sourceHost.replaceChildren();
     for (const source of state.sources) {
@@ -745,31 +768,29 @@
             if (!mission.events.some((e) => e.seq === data.seq))
               mission.events.push(data);
             if (data.kind === "model_started") {
-              q("#lk-draft").hidden = true;
-              q("#lk-draft-input").textContent = "";
-              q("#lk-draft-text").textContent = "";
+              clearDraft();
+              q("#lk-draft").hidden = false;
+              q("#lk-draft-action").textContent = "Le modèle prépare la prochaine étape…";
             }
             clearTimeout(refreshTimer);
-            refreshTimer = setTimeout(refresh, 100);
+            refreshTimer = setTimeout(refresh, 250);
           } else if (kind === "draft") {
             q("#lk-draft").hidden = false;
             if (data.phase === "tool_input_started") {
               q("#lk-draft-action").textContent =
-                "Appel proposé : " + (data.action || "outil");
-              q("#lk-draft-input").textContent = "";
+                "Préparation : " + (tools[data.action] || data.action || "outil");
+              draftInput = "";
             }
             if (data.phase === "tool_input")
-              q("#lk-draft-input").textContent = (
-                q("#lk-draft-input").textContent + (data.partial_json || "")
-              ).slice(-16000);
+              draftInput = (draftInput + (data.partial_json || "")).slice(-16000);
             if (data.phase === "text")
-              q("#lk-draft-text").textContent = (
-                q("#lk-draft-text").textContent + (data.text || "")
-              ).slice(-16000);
+              draftText = (draftText + (data.text || "")).slice(-16000);
+            paintDraft();
           } else if (kind === "end") {
             const state = await api("missions/" + encodeURIComponent(id));
             if (version !== generation) return false;
             render(state);
+            q("#lk-draft-action").textContent = "Flux terminé · les résultats validés sont dans la synthèse.";
             ended = true;
             q("#lk-connection").textContent = "Flux terminé · Journal conservé";
             return false;

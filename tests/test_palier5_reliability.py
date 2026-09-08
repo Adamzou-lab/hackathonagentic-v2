@@ -1,6 +1,6 @@
 """Offline adversarial fixtures; these do not prove live model compliance."""
 import pytest
-from app.agent.engine import Engine
+from app.agent.engine import Engine, Halt
 from app.agent.web import ToolFailure
 from app.schemas import MissionInput, SaveInput
 from app.storage import Store
@@ -90,3 +90,24 @@ def test_missing_or_invalid_usage_is_not_reported_as_zero(mission, bad):
 def test_zero_calls_is_a_measured_zero(mission):
     usage = mission[0].snapshot(mission[1])['usage']
     assert usage['tokens_complete'] and usage['total_tokens'] == 0
+
+
+def test_token_threshold_prevents_next_model_reservation(mission):
+    store, mid = mission
+    report(store, mid, {'input_tokens': 24000, 'output_tokens': 10})
+    before = store.get(mid)['model_calls_used']
+    with pytest.raises(Halt) as stopped:
+        Engine(store, object()).reserve(mid, 'model_calls_used', 60, 'model_started')
+    assert stopped.value.status == 'budget_exhausted'
+    assert store.get(mid)['model_calls_used'] == before
+    assert store.events(mid)[-1]['kind'] == 'token_budget_exhausted'
+
+
+@pytest.mark.parametrize('actions,limit', [(10,16000),(20,24000),(100,40000)])
+def test_packs_have_explicit_token_limits(tmp_path, actions, limit):
+    store = Store(tmp_path/'limits')
+    try:
+        mid = store.create(MissionInput(subject='Veille', domains=['example.com'], action_budget=actions))
+        assert store.snapshot(mid)['usage']['token_budget'] == limit
+    finally:
+        store.db.close()

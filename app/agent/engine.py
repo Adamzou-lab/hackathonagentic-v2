@@ -80,6 +80,14 @@ class Engine:
 
     def reserve(self, mid, counter, limit, kind):
         d = self.guard(mid)
+        if counter == 'model_calls_used':
+            usage = self.store.snapshot(mid)['usage']
+            observed = usage.get('observed_tokens') or {}
+            spent = sum(observed.values())
+            ceiling = d.get('token_budget', 16000)
+            if spent >= ceiling:
+                self.store.save(d, 'token_budget_exhausted', {'tokens_observed': spent, 'token_budget': ceiling})
+                raise Halt('budget_exhausted')
         if d[counter] >= limit:
             raise Halt('budget_exhausted')
         d[counter] += 1
@@ -379,15 +387,15 @@ class Engine:
                            'finding_target':2 if d['action_budget'] <= 10 else None,
                            'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
                                'title':p.get('title',''), 'published_at':p.get('published_at'),
-                               'passages':passages(p)[:12]} for p in list(d['pages'].values())[-2:]],
+                               'passages':passages(p)[:6]} for p in list(d['pages'].values())[-1:]],
                            'failed_pages':[{'url':s['url'], 'error':s.get('error')} for s in d['sources'] if s.get('error')][-10:],
-                           'source_candidates':d.get('source_candidates',[]),
+                           'source_candidates':d.get('source_candidates',[]) if not d['domains'] else [],
                            'known_findings':d.get('known_findings',[]),
                            'known_findings_truncated':d.get('known_findings_truncated',False),
                            'update_since':d.get('update_since'),
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
-                           'recent_results':history[-4:]}
+                           'recent_results':history[-2:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
                     dependency='model_provider', operation='decide')
                 d = self.guard(mid)
