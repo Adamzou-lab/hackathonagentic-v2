@@ -37,7 +37,7 @@ Chaque tentative produit aussi des événements de journal et consomme le budget
 Ces valeurs forment une base de conception à harmoniser avec `SPEC.md` et `MENACES.md`, puis à ajuster sur mesures. Elles ne prétendent pas démontrer à elles seules les 30 minutes d'autonomie.
 
 - **Contexte imposé par le serveur** : mission courante, domaines autorisés, fenêtre temporelle, budgets et identité de l'opérateur. Aucun outil n'accepte un chemin de fichier, des identifiants ou un changement de permissions choisis par le modèle.
-- **Recherche** : requête de 1 à 500 caractères, `k` entre 1 et 5. Le serveur restreint la recherche aux domaines autorisés et filtre aussi les résultats ; le filtre du prestataire n'est pas une garantie. Fournisseur de recherche à sélectionner avant implémentation.
+- **Recherche** : requête de 1 à 500 caractères, `k` entre 1 et 5. Le serveur restreint la recherche aux domaines autorisés et filtre aussi les résultats ; le filtre du prestataire n'est pas une garantie. Fournisseur de recherche : Anthropic web_search.
 - **Lecture** : HTTPS public, sans compte ni cookie de session utilisateur ; refus des adresses locales, privées, réservées et des URL contenant des identifiants. Contrôler le domaine, la résolution réseau et la destination réellement jointe, à chaque redirection (3 maximum), pour éviter les accès au réseau interne. Limites proposées : 15 secondes par appel, 1 Mio reçu et 30 000 caractères de texte conservé par page. Pas d'exécution de JavaScript, de téléchargement arbitraire ou de navigation authentifiée ; page non exploitable = erreur explicite.
 - **Contenus externes** : texte traité comme donnée non fiable. Les consignes trouvées dans une page ne changent ni la mission ni les permissions. Le rapport est rendu comme texte échappé, pas comme HTML fourni par un site.
 - **Constats** : valider les types, les tailles et la présence effective des extraits dans les pages enregistrées. Cette vérification prouve la provenance, pas la véracité de l'affirmation. Les incertitudes et contradictions restent visibles ; les dates inconnues ne sont pas présentées comme des nouveautés confirmées de la semaine.
@@ -62,8 +62,17 @@ La reprise après panne au point exact est un bonus, pas une promesse du MVP. Re
 - L'ordre d'arrêt est un état **persisté en base**, relu avant chaque appel et chaque tour de boucle, y compris après redémarrage ; il ne repose pas uniquement sur un signal en mémoire.
 - Deux tentatives maximum par URL source en échec pour toute l'exécution : rappeler le même outil plus tard ne remet pas le compteur à zéro. Les reprises restent réservées aux erreurs transitoires et consomment le budget.
 - La lecture du MVP porte sur du HTML textuel uniquement, sans PDF ni images. Le programme vérifie les règles d'accès de `robots.txt` et borne le débit par domaine ; une indisponibilité de ces règles suspend la source, sans contournement. Les requêtes de contrôle sont elles-mêmes tracées, bornées et comptées dans un plafond réseau distinct proposé à 200 requêtes, redirections comprises.
-- Aucune mémoire de travail d'une mission précédente n'est injectée dans une nouvelle mission. Conserver les journaux et rapports des anciennes missions reste nécessaire et distinct de leur réutilisation comme contexte du modèle.
+- Une actualisation peut recevoir un contexte factuel borné (20 constats, 12 000 caractères), versionné avec les identifiants des preuves et de la mission précédente. Les anciens journaux et les pages complètes ne sont pas réinjectés. Les constats antérieurs restent des données non fiables.
 
 ## À savoir expliquer au checkpoint
 
 Le modèle propose les actions ; le serveur décide si elles sont autorisées. Les pages et le prestataire de recherche peuvent mentir. Les citations permettent de contrôler l'origine d'une information, pas de garantir sa vérité. Même si le modèle ignore une consigne d'arrêt, il ne peut plus lancer d'outil : c'est le programme qui coupe l'exécution.
+
+
+## Découverte de sources et enrichissement
+
+- `discover_sources(query)` : une recherche publique réelle retourne jusqu'à 10 candidats ; une seule tentative par exécution, erreur visible en cas d'échec.
+- `select_sources(sources)` : le modèle propose 1 à 5 domaines présents dans ces candidats, avec un motif. Le serveur vérifie la liste et le DNS public avant de permettre les lectures. Impossible en mode manuel.
+- `save_finding` : `change` vaut new, update ou duplicate ; les deux derniers référencent un `related_finding_id` connu. Toute preuve doit avoir été relue dans l'exécution actuelle.
+- Chaque découverte et sélection compte dans le budget d'actions ; tous les appels modèle sont comptés.
+- « Mes veilles » regroupe les exécutions dans une fiche durable. Une actualisation ne réécrit jamais les journaux ou les preuves des exécutions antérieures.

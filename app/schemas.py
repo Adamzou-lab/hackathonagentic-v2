@@ -2,7 +2,7 @@
 import ipaddress
 import re
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def normalize_domain(value: str) -> str:
@@ -24,9 +24,21 @@ class StrictModel(BaseModel):
 
 class MissionInput(StrictModel):
     subject: str = Field(min_length=1, max_length=500)
-    domains: list[str] = Field(min_length=1, max_length=5)
+    domains: list[str] = Field(default_factory=list, max_length=5)
+    auto_sources: bool = False
+    watch_id: str | None = Field(default=None, min_length=1, max_length=64)
+    force_refresh: bool = False
+    allow_new: bool = False
     action_budget: int = Field(default=20, ge=1, le=100)
     duration_minutes: int = Field(default=10, ge=1, le=30)
+
+    @model_validator(mode='after')
+    def source_mode(self):
+        if self.auto_sources and self.domains:
+            raise ValueError('En mode automatique, les domaines sont choisis par l’agent.')
+        if not self.auto_sources and not self.domains:
+            raise ValueError('Choisissez les sources automatiques ou au moins un domaine.')
+        return self
 
     @field_validator('subject')
     @classmethod
@@ -67,5 +79,13 @@ class FindingDraft(StrictModel):
 
 
 class SaveInput(StrictModel):
+    change: Literal['new', 'update', 'duplicate'] = 'new'
+    related_finding_id: str | None = Field(default=None, min_length=1, max_length=100)
     finding: FindingDraft
     idempotency_key: str = Field(min_length=1, max_length=100)
+
+    @model_validator(mode='after')
+    def relationship(self):
+        if (self.change == 'new') != (self.related_finding_id is None):
+            raise ValueError('Une évolution ou un doublon doit référencer un constat connu.')
+        return self

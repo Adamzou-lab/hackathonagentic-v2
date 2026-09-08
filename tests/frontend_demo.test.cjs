@@ -88,3 +88,100 @@ test("arrêter ferme l’action en cours et bloque la progression", async () => 
   const next = await api("missions/demo");
   assert.equal(next.events.length, state.events.length);
 });
+
+async function complete(api, state) {
+  for (let i = 0; i < 6; i++) state = await api("missions/" + state.id);
+  return state;
+}
+function createRequest(overrides = {}) {
+  return {
+    method: "POST",
+    body: JSON.stringify({
+      subject: "Veille des nouveautés",
+      domains: [],
+      auto_sources: true,
+      action_budget: 10,
+      duration_minutes: 5,
+      ...overrides,
+    }),
+  };
+}
+test("les sources automatiques démo et leur caractère fictif sont visibles", async () => {
+  const api = transport();
+  const state = await api("missions", createRequest());
+  assert.ok(state.domains.length > 0 && state.domains.length <= 5);
+  assert.ok(
+    state.events.some(
+      (e) => e.kind === "sources_selected" && /fictifs/.test(e.data.reason),
+    ),
+  );
+});
+test("réutiliser une veille ne crée ni mission ni nouvelle trace", async () => {
+  const api = transport();
+  const first = await complete(api, await api("missions", createRequest()));
+  const reused = await api("missions", createRequest());
+  assert.equal(reused.id, first.id);
+  assert.equal(reused.events.length, first.events.length);
+  assert.equal(reused.reuse.reason, "recent_completed");
+  const list = await api("watches?query=");
+  assert.equal(list.total, 1);
+  assert.equal(list.watches[0].run_count, 1);
+});
+test("actualiser enrichit la même veille et conserve le journal précédent", async () => {
+  const api = transport();
+  const first = await complete(api, await api("missions", createRequest()));
+  const next = await complete(
+    api,
+    await api(
+      "missions",
+      createRequest({ watch_id: first.watch_id, force_refresh: true }),
+    ),
+  );
+  assert.notEqual(next.id, first.id);
+  assert.equal(next.watch_id, first.watch_id);
+  assert.equal(next.new_findings_count, 1);
+  const detail = await api("watches/" + first.watch_id);
+  assert.equal(detail.findings.length, 2);
+  assert.equal(detail.runs.length, 2);
+  assert.equal(
+    (await api("missions/" + first.id)).events.length,
+    first.events.length,
+  );
+  const again = await complete(
+    api,
+    await api(
+      "missions",
+      createRequest({ watch_id: first.watch_id, force_refresh: true }),
+    ),
+  );
+  assert.equal(again.new_findings_count, 0);
+  assert.equal((await api("watches/" + first.watch_id)).findings.length, 2);
+});
+test("le rapprochement démo attend le choix explicite sans créer une recherche", async () => {
+  const api = transport("similar");
+  const first = await complete(api, await api("missions", createRequest()));
+  const changed = createRequest({ subject: "Un autre sujet" });
+  await assert.rejects(
+    api("missions", changed),
+    (error) => error.status === 409 && error.detail.code === "similar_watches",
+  );
+  assert.equal((await api("watches?query=")).total, 1);
+  const linked = await complete(
+    api,
+    await api(
+      "missions",
+      createRequest({
+        subject: "Un autre sujet",
+        watch_id: first.watch_id,
+        force_refresh: true,
+      }),
+    ),
+  );
+  assert.equal(linked.watch_id, first.watch_id);
+  const separate = await api(
+    "missions",
+    createRequest({ subject: "Un troisième sujet", allow_new: true }),
+  );
+  assert.notEqual(separate.watch_id, first.watch_id);
+  assert.equal((await api("watches?query=")).total, 2);
+});

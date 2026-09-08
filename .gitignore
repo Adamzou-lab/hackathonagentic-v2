@@ -29,7 +29,13 @@ npm-debug.log*
 *.db
 *.sqlite
 *.sqlite3
+*.db-wal
+*.db-shm
 *.log
+*.db-wal
+*.db-shm
+*.incidents.jsonl
+.lockin-storage-*.json
 
 # Artefacts d'execution de l'agent : pages recuperees, traces de mission
 runs/

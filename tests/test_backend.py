@@ -215,7 +215,8 @@ def test_single_active_mission(tmp_path):
     app = create_app(db_path=str(tmp_path/'db'), access_token=TOKEN, provider=Slow([]))
     with TestClient(app) as client:
         assert client.post('/api/missions', json=REQUEST, headers=AUTH).status_code == 202
-        assert client.post('/api/missions', json=REQUEST, headers=AUTH).status_code == 409
+        assert client.post('/api/missions', json=REQUEST, headers=AUTH).status_code == 200
+        assert client.post('/api/missions', json={**REQUEST, 'subject':'Autre veille'}, headers=AUTH).status_code == 409
 
 
 def test_search_keeps_hits_when_provider_reaches_search_cap():

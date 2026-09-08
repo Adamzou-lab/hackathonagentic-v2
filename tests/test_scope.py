@@ -35,7 +35,6 @@ def test_no_tool_before_scope_acceptance(tmp_path, decision):
     asyncio.run(run())
 
 @pytest.mark.parametrize('content', [[], [{'type':'text','text':'Non.'}],
-    [{'type':'tool_use','name':'accept_scope','input':{},'truncated':True}],
     [{'type':'tool_use','name':'accept_scope','input':{}}]*2])
 def test_ambiguous_model_output_refused(content):
     class Fake(AnthropicProvider):

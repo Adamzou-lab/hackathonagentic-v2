@@ -10,6 +10,7 @@
       defer
       src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"
     ></script>
+    <script defer src="/static/journal.js"></script>
     <script defer src="/static/demo.js"></script>
     <script defer src="/static/stream.js"></script>
     <script defer src="/static/app.js"></script>
@@ -22,6 +23,7 @@
         </div>
         <div class="lk-chrome">
           <span class="lk-proto">HAIKU 4.5</span
+          ><button class="lk-plain" id="lk-library-nav">Mes veilles</button
           ><button class="lk-plain" id="lk-nav" hidden>Nouvelle veille</button
           ><span class="lk-avatar">A</span>
         </div>
@@ -42,18 +44,32 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           >
           <div class="lk-divider"></div>
           <div class="lk-fieldhead">
-            <label>Sources autorisées</label
-            ><span id="lk-count">3 / 5 domaines</span>
+            <label for="lk-source-mode">Choix des sources</label>
           </div>
-          <div class="lk-domains" id="lk-domains"></div>
-          <div class="lk-domainentry" id="lk-domainentry" hidden>
-            <input
-              id="lk-domaininput"
-              aria-label="Nouveau domaine"
-              placeholder="exemple.com"
-            /><button type="button" class="lk-add" id="lk-confirmdomain">
-              Ajouter
-            </button>
+          <select id="lk-source-mode">
+            <option value="auto">Automatique — jusqu’à 5 domaines</option>
+            <option value="manual">Je choisis mes domaines</option>
+          </select>
+          <p class="lk-accesshelp" id="lk-source-help">
+            L’agent recherche des sources pertinentes, en privilégiant les
+            publications officielles et d’origine. Sa sélection reste visible et
+            modifiable.
+          </p>
+          <div id="lk-manual-sources" hidden>
+            <div class="lk-fieldhead">
+              <span>Sources autorisées</span
+              ><span id="lk-count">3 / 5 domaines</span>
+            </div>
+            <div class="lk-domains" id="lk-domains"></div>
+            <div class="lk-domainentry" id="lk-domainentry" hidden>
+              <input
+                id="lk-domaininput"
+                aria-label="Nouveau domaine"
+                placeholder="exemple.com"
+              /><button type="button" class="lk-add" id="lk-confirmdomain">
+                Ajouter
+              </button>
+            </div>
           </div>
           <div class="lk-divider"></div>
           <div class="lk-fieldhead">
@@ -171,9 +187,18 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               <option value="success">Recherche et résultat</option>
               <option value="disabled">Outil désactivé : refus</option>
               <option value="error">Panne de lecture</option>
+              <option value="similar">
+                Suggestion de rapprochement fictive
+              </option>
             </select>
           </div>
           <p class="lk-error" id="lk-error" role="alert" hidden></p>
+          <div
+            id="lk-similar"
+            class="lk-notice"
+            hidden
+            aria-live="polite"
+          ></div>
           <button class="lk-submit" type="button">
             Lancer la veille
             <i data-lucide="arrow-up-right" aria-hidden="true"></i>
@@ -191,6 +216,58 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
             résultat sourcé</span
           >
         </div>
+      </section>
+      <section
+        class="lk-library"
+        id="lk-library"
+        hidden
+        aria-labelledby="lk-library-title"
+      >
+        <div class="lk-titlebar">
+          <div>
+            <span class="lk-eyebrow">Votre mémoire de recherche</span>
+            <h2 id="lk-library-title">Mes veilles</h2>
+            <p class="lk-subtitle">
+              Retrouvez vos résultats, puis ajoutez les nouveautés.
+            </p>
+          </div>
+          <button type="button" class="lk-add" id="lk-library-new">
+            Nouvelle veille
+          </button>
+        </div>
+        <form id="lk-library-auth" class="lk-library-auth" hidden>
+          <label for="lk-library-access">Code d’accès aux recherches</label>
+          <div class="lk-watch-actions">
+            <input
+              id="lk-library-access"
+              type="password"
+              autocomplete="off"
+              minlength="32"
+              required
+              placeholder="Votre code Lockin"
+            /><button class="lk-add" type="submit">Ouvrir mes veilles</button>
+          </div>
+          <p class="lk-accesshelp">
+            Le code reste uniquement en mémoire dans cette page.
+          </p>
+        </form>
+        <p class="lk-error" id="lk-library-error" role="alert" hidden></p>
+        <form id="lk-watch-search" class="lk-watch-search" role="search">
+          <label class="lk-sr-only" for="lk-watch-query"
+            >Rechercher une veille</label
+          ><input
+            id="lk-watch-query"
+            type="search"
+            placeholder="Retrouver un sujet…"
+            maxlength="500"
+          /><button class="lk-add" type="submit">Rechercher</button
+          ><button class="lk-plain" id="lk-library-reload" type="button">
+            Actualiser la liste
+          </button>
+        </form>
+        <p id="lk-library-status" class="lk-accesshelp" role="status"></p>
+        <div id="lk-watch-list" class="lk-watch-list"></div>
+        <div id="lk-watch-detail" hidden></div>
       </section>
       <section class="lk-work" id="lk-work" hidden>
         <p id="lk-notice" class="lk-notice" role="status" hidden></p>
@@ -278,6 +355,11 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           </div>
         </div>
         <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
+        <div class="lk-watch-actions">
+          <button type="button" class="lk-plain" id="lk-mission-watch" hidden>
+            Voir la veille et ses actualisations</button
+          ><span class="lk-accesshelp" id="lk-enrichment" role="status"></span>
+        </div>
         <section
           id="lk-draft"
           class="lk-notice"
@@ -289,6 +371,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           <pre id="lk-draft-input"></pre>
           <p id="lk-draft-text"></p>
         </section>
+        <p id="lk-situation" class="lk-situation" hidden></p>
         <p id="lk-connection" class="lk-accesshelp">
           Actualisation du serveur toutes les secondes
         </p>

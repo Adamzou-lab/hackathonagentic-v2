@@ -1,6 +1,6 @@
 # Lockin — Le Métronome
 
-Agent de veille web d’Adam et Panaki. Choisissez un sujet, vos domaines autorisés et votre budget ; suivez la recherche en direct et arrêtez-la à tout moment.
+Agent de veille web d’Adam et Panaki. Choisissez un sujet, votre budget et des sources automatiques ou manuelles ; suivez la recherche en direct et arrêtez-la à tout moment.
 
 ## Démarrer en moins de 5 minutes
 
@@ -13,7 +13,7 @@ git clone --branch adam --single-branch https://github.com/Adamzou-lab/hackathon
 cd hackathonagentic-v2
 ```
 
-La version intégrée du palier 2 est sur **adam**. Si le dépôt est privé, votre compte GitHub doit y avoir accès.
+La version de travail intégrée est sur **adam**. Si le dépôt est privé, votre compte GitHub doit y avoir accès.
 
 ### 2. Lancer
 
@@ -93,8 +93,9 @@ Aucune clé supplémentaire pour la recherche web : elle utilise Anthropic.
 | LOCKIN_ACCESS_TOKEN | Authentification des missions | Généré par le lanceur |
 | LOCKIN_MODEL | Modèle | claude-haiku-4-5 |
 | LOCKIN_DB_PATH | Journal SQLite | data/lockin.db |
+| LOCKIN_INCIDENT_PATH | Journal de secours si SQLite disparaît | Chemin de la base suivi de .incidents.jsonl |
 
-http://localhost:8000/health doit répondre `{"status":"ok","service":"Lockin"}`. Cette sonde ne valide pas la clé Anthropic.
+http://localhost:8000/health doit répondre `{"status":"ok","service":"Lockin"}`. Cette sonde vérifie la disponibilité du stockage, sans appel Anthropic ; elle ne valide pas la clé. Une perte du stockage ou un arrêt non confirmé donne HTTP 503.
 
 Tests backend sans appels Anthropic après installation : `.venv/bin/python -m pytest -q` ; sous Windows : `.venv\Scripts\python.exe -m pytest -q`.
 
@@ -104,7 +105,24 @@ Tests backend sans appels Anthropic après installation : `.venv/bin/python -m p
 - [MENACES.md](MENACES.md) : modèle de menace.
 - [API.md](API.md) : contrat HTTP.
 - [OUTILS.md](OUTILS.md) : signatures des outils.
+- [PALIER4_CONTRAT.md](PALIER4_CONTRAT.md) : événements d'arrêt, de panne et de récupération pour Claude et Panaki.
+- [RECETTE_PALIER4.md](RECETTE_PALIER4.md) : provoquer une coupure dans un processus de test isolé et montrer les preuves.
 
 ## Organisation Git
 
 Contributions sur `adam` et `panaki`, intégration par pull request vers `dev`, puis validation vers `main`.
+
+
+## Retrouver et actualiser ses veilles
+
+« Mes veilles » donne accès aux résultats conservés et à chaque exécution avec ses
+preuves. Une demande identique récente réutilise les résultats sans nouveau crédit
+API. « Actualiser » recherche les nouveautés dans la même fiche, avec un nouveau
+budget et un contexte factuel borné. Les sujets proches font l'objet d'une
+proposition à confirmer.
+
+Le mode Sources automatiques découvre puis sélectionne jusqu'à cinq domaines
+pertinents, en privilégiant les publications d'origine. Les domaines restent
+visibles et modifiables pour l'actualisation suivante. La préparation utilise deux
+actions ; elle ne garantit pas un classement objectif de fiabilité. Le mode manuel
+reste disponible. La démonstration `?demo` illustre ces parcours sans appels API.

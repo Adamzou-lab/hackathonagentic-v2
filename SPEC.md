@@ -12,7 +12,7 @@ Le sujet de veille est un paramètre : la démonstration porte sur l'IA agentiqu
 
 ## Mission de démonstration
 
-Identifier les nouveautés des sept derniers jours sur les frameworks et outils de création d'agents IA, à partir d'une liste de sources officielles fournie au lancement, puis produire une synthèse dédupliquée où chaque entrée porte un lien, une date et l'intérêt pratique pour un développeur.
+Identifier les nouveautés des sept derniers jours sur les frameworks et outils de création d'agents IA, à partir de domaines fournis au lancement ou découverts automatiquement, puis produire une synthèse dédupliquée où chaque entrée porte un lien, une date et l'intérêt pratique pour un développeur.
 
 Trois règles tenues par le système, pas par le sujet choisi :
 
@@ -22,7 +22,7 @@ Trois règles tenues par le système, pas par le sujet choisi :
 
 ## User stories
 
-**US1.** En tant qu'utilisateur, je donne un sujet, une liste de domaines autorisés et un budget, je lance l'agent, puis je ferme la page. Il continue sans moi.
+**US1.** En tant qu'utilisateur, je donne un sujet, un budget et le mode de sélection des sources, je lance l'agent, puis je ferme la page. Il continue sans moi.
 
 **US2.** En tant qu'utilisateur, je peux arrêter l'agent à n'importe quel moment et récupérer aussitôt ce qu'il a déjà trouvé, avec les sources correspondantes.
 
@@ -32,9 +32,13 @@ Trois règles tenues par le système, pas par le sujet choisi :
 
 Cette section est plus longue que le scope, volontairement. Chaque exclusion est un choix, pas un oubli.
 
-**1. Aucune mémoire d'une mission n'est réinjectée dans la suivante.**
-C'est notre exclusion la plus importante, et elle demande une précision. Nous conservons les journaux et les rapports des missions passées : ce sont nos preuves, et nous ne les effaçons pas. Ce que nous refusons, c'est de les réinjecter comme contexte du modèle au lancement d'une nouvelle mission.
-La raison n'est pas qu'une mémoire importée serait impossible à tracer : versionnée, elle le serait. C'est qu'elle rendrait chaque mission dépendante des précédentes, et qu'expliquer une décision demanderait alors de lire une autre exécution que celle qu'on examine. Nous préférons une mission qui se rejoue seule et un journal qui se suffit à lui-même.
+**1. Aucune mémoire opaque ou illimitée.**
+Les veilles sont désormais des fiches durables, enrichies par des exécutions séparées.
+Chaque actualisation reçoit au maximum 20 résumés factuels et 12 000 caractères de
+contexte, avec les identifiants des constats et de la mission d'origine. Ce contexte
+est conservé dans le snapshot et marqué non fiable. Les anciennes preuves et les
+journaux ne sont jamais réécrits. Les rapprochements de sujets seulement similaires
+nécessitent un choix explicite de l'opérateur.
 
 **2. Pas de comptes connectés ni de sources authentifiées.**
 L'agent ne lit que du web public. Le jury doit pouvoir rejouer la démonstration sans nos identifiants. Et un identifiant stocké dans le projet devient une cible le vendredi, pendant la chasse ouverte.
@@ -45,8 +49,13 @@ Nous respectons `robots.txt` et les limites de débit. Un agent qui force l'acc�
 **4. Aucune publication automatique, aucune écriture vers l'extérieur.**
 L'agent écrit son rapport dans notre base, et nulle part ailleurs. Pas d'envoi de courriel, pas de publication, aucune écriture sur un service tiers. Il émet bien des appels sortants pour collecter, puisque c'est son métier : recherche, lecture de pages, appel au modèle. La frontière que nous posons est entre lire et écrire, pas entre appeler et ne pas appeler. Un agent autonome qui publie seul transforme une erreur de collecte en erreur publique, et nous ne serions pas là pour l'arrêter.
 
-**5. Pas de navigation libre.**
-L'agent ne suit que des liens appartenant à la liste de domaines autorisée au lancement. Sans cette limite, une page peut l'emmener n'importe où et le budget se consomme en bruit.
+**5. Pas de navigation libre après sélection des sources.**
+En mode manuel, l'opérateur donne de un à cinq domaines. En mode automatique, le
+modèle découvre des candidats via une recherche web, puis sélectionne jusqu'à cinq
+domaines parmi ces seuls résultats, avec un motif visible. Le serveur vérifie cette
+sélection et leur résolution DNS publique. Les lectures ultérieures restent limitées
+à ces domaines, avec nouvelle vérification DNS à chaque connexion. Le modèle ne peut
+pas ajouter un domaine arbitraire au fil de la lecture.
 
 **6. Pas de multi-agents.**
 Une seule boucle, un seul agent. Ajouter des sous-agents multiplie les endroits où une panne peut passer inaperçue, ce qui est précisément le risque que ce sujet sanctionne.
@@ -57,8 +66,13 @@ Nous restons sur du HTML textuel. L'OCR ajouterait un mode de panne qui n'a aucu
 **8. Pas de gestion multi-utilisateur.**
 Un seul opérateur local, pas de comptes, pas de rôles. Le sujet évalue l'autonomie d'un agent, pas un système de permissions.
 
-**9. Pas de sources non officielles.**
-Ni réseaux sociaux, ni agrégateurs, ni blogs tiers, même quand ils sont plus rapides que la source officielle. Deux raisons. La date affichée par un agrégateur est celle de la reprise, pas celle de l'annonce, et notre mission porte sur une fenêtre de sept jours : une date fausse rend le résultat faux. Ensuite, dix reprises d'une même annonce ne font pas dix confirmations. Nous dédupliquons ce que nous savons rapprocher, par source et par contenu, mais rapprocher deux formulations différentes d'une même annonce reste imparfait. En restant sur les sources officielles, nous réduisons le problème au lieu de parier sur notre capacité à le résoudre.
+**9. Priorité aux sources primaires, sans certification automatique.**
+La découverte privilégie les sites officiels et les publications d'origine, leur
+pertinence et leur compétence sur le sujet. Nous ne prétendons pas prouver que les
+cinq domaines choisis sont « les plus fiables ». Moins de cinq sources est acceptable.
+Les domaines et motifs sont visibles et peuvent être modifiés pour une actualisation.
+Les informations sans date vérifiable restent marquées inconnues ; une correction
+est liée au constat précédent et conserve l'accès aux versions anciennes.
 
 **10. Pas de garantie de vérité, ni de classement objectif.**
 L'agent résume bien l'intérêt pratique d'une nouveauté pour un développeur : c'est la mission, et nous ne l'excluons pas. Ce qu'il ne fait pas, c'est garantir que l'information est vraie, ni présenter son appréciation comme un classement objectif. Ce qu'il écrit est une lecture, donnée comme telle et rattachée à sa source, pour que le lecteur puisse trancher lui-même. Nous n'ajoutons pas non plus un second modèle chargé de noter le premier : cela déplacerait le problème de confiance d'un cran sans le résoudre, puisqu'il faudrait alors justifier pourquoi on croit le juge.
@@ -68,7 +82,7 @@ Le journal enregistre les actions, leurs paramètres, leurs résultats et une ju
 
 ### Le non argumenté proposé pour la carte bonus
 
-L'exclusion numéro 1. Elle se défend en une phrase : nous gardons tous les journaux, mais nous n'en réinjectons aucun, pour qu'expliquer une exécution ne demande jamais d'en lire une autre.
+L'exclusion numéro 1 : pas de mémoire opaque. Chaque apport de contexte est borné, versionné et rattaché à des preuves consultables.
 
 ## Critères de fin pour le MVP
 

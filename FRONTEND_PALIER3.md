@@ -57,3 +57,12 @@ Tests sans API : blocage avant validation, décisions malformées, refus visible
 par API/SSE, et parcours accepté jusqu'à la recherche. Ces doubles ne prouvent
 pas la classification réelle de « prépare-moi un sandwich ». Aucun appel payant
 supplémentaire ni mise à jour de la maquette Netlify dans cette modification.
+
+### Mes veilles et actualisations
+
+La bibliothèque authentifiée liste les fiches conservées en SQLite et donne accès
+aux exécutions et preuves antérieures. Une actualisation explicite consomme du
+crédit API, avec un contexte borné des informations connues. La réutilisation d'une
+veille identique récente reste sans nouvel appel. Les sujets proches nécessitent
+un choix visible avant rattachement. Les sources automatiques choisissent jusqu'à
+cinq domaines candidats ; le mode manuel reste disponible.
