@@ -37,6 +37,8 @@ test("le succès démo contient un constat explicitement fictif et des traces as
   for (let i = 0; i < 6; i++) state = await api("missions/demo");
   assert.equal(state.status, "completed");
   assert.equal(state.findings.length, 1);
+  assert.ok(state.last_request_cost.amount_usd > 0);
+  assert.equal(state.last_request_cost.currency, "USD");
   assert.match(state.findings[0].summary, /ne provient pas/);
   const starts = state.events.filter((e) => e.kind === "action_started");
   const ends = state.events.filter((e) => e.kind === "action_finished");
@@ -45,6 +47,19 @@ test("le succès démo contient un constat explicitement fictif et des traces as
   starts.forEach((e, i) =>
     assert.equal(e.data.action_number, ends[i].data.action_number),
   );
+});
+test("l’interface contient un affichage dédié au coût de la dernière requête", () => {
+  const html = fs.readFileSync(
+    path.join(__dirname, "../app/static/index.html"),
+    "utf8",
+  );
+  const app = fs.readFileSync(
+    path.join(__dirname, "../app/static/app.js"),
+    "utf8",
+  );
+  assert.match(html, /id="lk-lastcost"/);
+  assert.match(html, /COÛT DERNIÈRE REQUÊTE/);
+  assert.match(app, /state\.last_request_cost/);
 });
 for (const [scenario, code] of [
   ["disabled", "tool_disabled_for_test"],
