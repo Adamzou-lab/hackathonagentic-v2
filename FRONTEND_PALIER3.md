@@ -18,15 +18,17 @@ Le bouton Nouvelle veille est indisponible tant que la mission est active. Arrê
 
 ## Vérifications effectuées le 8 septembre 2026
 
-- 34 tests Python du backend réussis, sans API.
-- 5 tests Node : `node --test tests/frontend_demo.test.cjs` (succès, refus, panne, budget et arrêt du simulateur).
+- 43 tests Python du backend réussis, sans API.
+- 8 tests Node : `node --test tests/frontend_*.test.cjs` (succès, refus, panne, budget, arrêt, trames SSE découpées et accents, fin de flux, JSON invalide).
 - Syntaxe JavaScript et `git diff --check`.
 - Navigateur : pack Rapide, mission simulée avec constat et extraits, journal détaillé ; serveur FastAPI avec fournisseur de test pour lancement authentifié, refus `tool_disabled_for_test` et arrêt confirmé. Aucun appel Anthropic pour ces vérifications frontend.
 - Texte `<img src=x onerror=alert(1)>` rendu littéralement, aucun élément image créé dans le titre de mission.
 - Contrôle mobile à 390 px : largeur du document et du contenu à 390 px, sans débordement horizontal.
 
-## Dépendance streaming
+## Streaming intégré
 
-Le contrat streaming de Claude n'était pas livré lors de cette intégration. Le client utilise donc le GET d'instantané existant toutes les secondes et l'indique à l'écran. Ce lot ne revendique pas le bonus streaming.
+Le contrat de Claude a été livré pendant ce travail sur `p3-streaming` à `6cf4307`, puis intégré avec le frontend sur adam. Le client utilise `fetch` sur `/api/missions/{id}/stream` avec Authorization Bearer et Last-Event-ID. Les événements journal sont dédupliqués par séquence et les instantanés sont relus pour les compteurs et états. Les fragments draft sont affichés comme provisoires, jamais interprétés comme actions ou preuves ; les arguments partiels ne sont jamais exécutés par le frontend.
 
-À réception du contrat, remplacer le suivi périodique par le flux authentifié documenté, corréler les événements par mission/action/séquence, gérer reconnexion et arrêt du lecteur, et présenter les deltas de réponse réels. Ne pas inventer une route ou un format SSE avant l'accord avec Claude. Les fichiers backend, provider et API.md sont restés hors de ce lot.
+Le lecteur supporte les trames fragmentées, UTF-8 et CRLF, ignore les keepalive, borne les données provisoires et ferme la connexion après end. Après coupure, reconnexion avec le dernier journal disponible, sans POST de mission. Un serveur plus ancien sans route stream conserve le suivi par polling. Les abonnements précédents sont annulés lors du changement de mission ou de reconnexion.
+
+Vérification navigateur sur le serveur SSE intégré avec fournisseur de test : connexion authentifiée, fragments visibles pendant la mission, refus tool_disabled_for_test dans le journal, puis fin du flux. Aucun nouvel essai Haiku payant effectué. Le bonus streaming n'est donc pas déclaré acquis : refaire la présentation avec le fournisseur réel après accord sur le crédit API. La limite de Claude demeure : le résultat du moteur de recherche Anthropic arrive d'un bloc, seuls les fragments de décision du modèle sont diffusés.

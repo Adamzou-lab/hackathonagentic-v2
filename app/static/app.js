@@ -340,6 +340,9 @@
   function render(state) {
     if (mission?.id !== state.id) {
       journalNodes.clear();
+      q("#lk-draft").hidden = true;
+      q("#lk-draft-input").textContent = "";
+      q("#lk-draft-text").textContent = "";
       q("#lk-events").replaceChildren();
     }
     mission = state;
@@ -507,6 +510,144 @@
       recent.append(row);
     }
   }
+  let streamController = null;
+  function closeStream() {
+    streamController?.abort();
+    streamController = null;
+  }
+  async function follow(id, version) {
+    if (demo) return poll(id, version);
+    if (version !== generation) return;
+    closeStream();
+    const controller = new AbortController();
+    streamController = controller;
+    let lastSeq = Math.max(0, ...(mission?.events || []).map((e) => e.seq)),
+      ended = false,
+      refreshTimer = null,
+      refreshing = false,
+      idle;
+    const activity = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => controller.abort(), 45000);
+    };
+    const refresh = async () => {
+      if (refreshing || version !== generation) return;
+      refreshing = true;
+      try {
+        const state = await api("missions/" + encodeURIComponent(id));
+        if (version === generation && !ended) render(state);
+      } catch {
+        if (version === generation)
+          notice(
+            "Actualisation de l’état indisponible. Le journal reçu reste visible.",
+          );
+      } finally {
+        refreshing = false;
+      }
+    };
+    try {
+      activity();
+      const response = await fetch(
+        "/api/missions/" + encodeURIComponent(id) + "/stream",
+        {
+          headers: {
+            Authorization: "Bearer " + token,
+            "Last-Event-ID": String(lastSeq),
+          },
+          signal: controller.signal,
+          cache: "no-store",
+          credentials: "omit",
+        },
+      );
+      if (response.status === 404) {
+        q("#lk-connection").textContent =
+          "Flux indisponible · Actualisation chaque seconde";
+        return poll(id, version);
+      }
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? "Code d’accès expiré ou incorrect."
+            : "Flux momentanément indisponible.",
+        );
+      if (!response.headers.get("content-type")?.includes("text/event-stream"))
+        throw new Error("Format de flux inattendu.");
+      q("#lk-connection").textContent =
+        "Flux connecté · Événements reçus en direct";
+      q("#lk-reconnect").hidden = true;
+      failures = 0;
+      notice("");
+      await window.readLockinStream(
+        response,
+        async (kind, data) => {
+          if (version !== generation) return false;
+          if (data?.mission_id !== id) return;
+          if (kind === "journal") {
+            if (!Number.isInteger(data.seq) || data.seq <= lastSeq) return;
+            lastSeq = data.seq;
+            if (!journalNodes.has(data.seq)) {
+              const row = eventRow(data, mission);
+              journalNodes.set(data.seq, row);
+              q("#lk-events").prepend(row);
+            }
+            if (!mission.events.some((e) => e.seq === data.seq))
+              mission.events.push(data);
+            if (data.kind === "model_started") {
+              q("#lk-draft").hidden = true;
+              q("#lk-draft-input").textContent = "";
+              q("#lk-draft-text").textContent = "";
+            }
+            clearTimeout(refreshTimer);
+            refreshTimer = setTimeout(refresh, 100);
+          } else if (kind === "draft") {
+            q("#lk-draft").hidden = false;
+            if (data.phase === "tool_input_started") {
+              q("#lk-draft-action").textContent =
+                "Appel proposé : " + (data.action || "outil");
+              q("#lk-draft-input").textContent = "";
+            }
+            if (data.phase === "tool_input")
+              q("#lk-draft-input").textContent = (
+                q("#lk-draft-input").textContent + (data.partial_json || "")
+              ).slice(-16000);
+            if (data.phase === "text")
+              q("#lk-draft-text").textContent = (
+                q("#lk-draft-text").textContent + (data.text || "")
+              ).slice(-16000);
+          } else if (kind === "end") {
+            const state = await api("missions/" + encodeURIComponent(id));
+            if (version !== generation) return false;
+            render(state);
+            ended = true;
+            q("#lk-connection").textContent = "Flux terminé · Journal conservé";
+            return false;
+          }
+        },
+        activity,
+      );
+      if (!ended && version === generation)
+        throw new Error("Connexion au flux interrompue.");
+    } catch (error) {
+      if (version !== generation) return;
+      failures++;
+      notice(
+        (error.name === "AbortError"
+          ? "Le flux ne répond plus."
+          : error.message) + " Reconnexion du suivi sans relancer la mission.",
+      );
+      q("#lk-connection").textContent =
+        "Flux déconnecté · Dernières données conservées";
+      q("#lk-reconnect").hidden = false;
+      timer = setTimeout(
+        () => follow(id, version),
+        Math.min(10000, 1000 * failures),
+      );
+    } finally {
+      clearTimeout(idle);
+      clearTimeout(refreshTimer);
+      if (streamController === controller) streamController = null;
+    }
+  }
   async function poll(id, version) {
     if (version !== generation) return;
     try {
@@ -578,12 +719,12 @@
       q("#lk-access").value = "";
       clearTimeout(timer);
       generation++;
+      closeStream();
       failures = 0;
       notice("");
       showTab("results");
       render(state);
-      if (!terminal.has(state.status))
-        timer = setTimeout(() => poll(state.id, generation), 1000);
+      if (!terminal.has(state.status)) follow(state.id, generation);
     } catch (error) {
       formError(error.message);
     } finally {
@@ -602,9 +743,9 @@
       notice("");
       clearTimeout(timer);
       generation++;
+      closeStream();
       render(state);
-      if (!terminal.has(state.status))
-        timer = setTimeout(() => poll(state.id, generation), 500);
+      if (!terminal.has(state.status)) follow(state.id, generation);
     } catch (error) {
       notice(error.message + " L’arrêt n’est pas confirmé.");
       q("#lk-stop").disabled = false;
@@ -614,6 +755,7 @@
     if (mission && !terminal.has(mission.status)) return;
     clearTimeout(timer);
     generation++;
+    closeStream();
     mission = null;
     remember(null);
     q("#lk-home").hidden = false;
@@ -629,6 +771,7 @@
   q("#lk-reconnect").onclick = () => {
     clearTimeout(timer);
     generation++;
+    closeStream();
     q("#lk-home").hidden = false;
     q("#lk-work").hidden = true;
     q("#lk-access").value = "";

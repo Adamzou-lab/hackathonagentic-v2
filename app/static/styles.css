@@ -866,3 +866,10 @@ body {
     flex-wrap: wrap;
   }
 }
+#lockin-mock #lk-draft pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+  font-size: 12px;
+}

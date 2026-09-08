@@ -11,6 +11,7 @@
       src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"
     ></script>
     <script defer src="/static/demo.js"></script>
+    <script defer src="/static/stream.js"></script>
     <script defer src="/static/app.js"></script>
   </head>
   <body>
@@ -277,6 +278,17 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           </div>
         </div>
         <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
+        <section
+          id="lk-draft"
+          class="lk-notice"
+          hidden
+          aria-label="Réponse progressive du modèle"
+        >
+          <strong>Réception du modèle · Provisoire, non exécuté</strong>
+          <p id="lk-draft-action"></p>
+          <pre id="lk-draft-input"></pre>
+          <p id="lk-draft-text"></p>
+        </section>
         <p id="lk-connection" class="lk-accesshelp">
           Actualisation du serveur toutes les secondes
         </p>
