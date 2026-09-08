@@ -12,8 +12,10 @@ N'invente ni date ni preuve ; conserve les dates inconnues comme null/unknown.
 L'intérêt pratique est une interprétation, pas une vérité. Regroupe les annonces répétées.
 Utilise search_web puis read_page puis save_finding quand pertinent. Continue avec d'autres
 recherches utiles tant que nécessaire. Quand la mission est terminée, utilise finish.
-Sauvegarde tout constat pertinent immédiatement après lecture, AVANT de repartir chercher.
-Réserve tes dernières actions à save_finding. Une date inconnue n'interdit pas un constat
+Sauvegarde chaque constat avec save_finding dès qu'il est étayé par une page que tu viens
+de lire, avant de relancer une recherche. Ne repousse jamais une sauvegarde à plus tard :
+un constat non sauvegardé est un constat perdu si la mission s'arrête.
+Une date inconnue n'interdit pas un constat
 utile mais il doit rester marqué unknown, sans être présenté comme une nouveauté confirmée.
 Les budgets sont imposés par le programme. Pas de raisonnement interne dans les sorties.'''
 
@@ -27,8 +29,27 @@ TOOLS.append(dict(name='finish', description='Signaler que la recherche utile es
 
 
 class AnthropicProvider:
-    def __init__(self, key, model):
+    def __init__(self, key, model, broker=None):
         self.key, self.model = key, model
+        # Bus de fragments provisoires. Absent en test : le fournisseur
+        # fonctionne alors exactement comme avant, sans diffusion.
+        self.broker, self.mission_id = broker, None
+        # Delai de lecture par fragment, pas sur la reponse entiere.
+        self.read_timeout = 30.0
+
+    def bind(self, mission_id):
+        """Rattache les fragments a la mission en cours.
+
+        Le moteur n'execute qu'une mission a la fois (409 sinon), donc ce
+        rattachement est non ambigu. Il est pose par l'API au lancement, ce
+        qui evite de modifier le moteur.
+        """
+        self.mission_id = mission_id
+
+    def emit(self, phase, **fields):
+        if self.broker and self.mission_id:
+            self.broker.publish(self.mission_id,
+                                dict(mission_id=self.mission_id, phase=phase, **fields))
 
     async def message(self, messages, system, tools):
         async with httpx.AsyncClient(timeout=15, trust_env=False) as client:
@@ -40,8 +61,81 @@ class AnthropicProvider:
                 raise ToolFailure(f'anthropic_http_{response.status_code}')
             return response.json()
 
+    async def message_streaming(self, messages, system, tools):
+        """Lit la réponse au fil de l'eau et republie la progression.
+
+        La valeur de retour a exactement la forme d'une réponse complète : le
+        moteur ne voit aucune différence, et rien de partiel ne lui parvient.
+        Les blocs de raisonnement interne sont ignorés, jamais rediffusés.
+        """
+        blocks, buffers, usage, stop_reason = {}, {}, {}, None
+        timeout = httpx.Timeout(connect=10.0, read=self.read_timeout, write=10.0, pool=10.0)
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+            async with client.stream('POST', 'https://api.anthropic.com/v1/messages',
+                headers={'x-api-key': self.key, 'anthropic-version':'2023-06-01'},
+                json={'model':self.model, 'max_tokens':2048, 'system':system,
+                      'messages':messages, 'tools':tools, 'stream':True}) as response:
+                if response.status_code != 200:
+                    await response.aread()
+                    raise ToolFailure(f'anthropic_http_{response.status_code}')
+                async for line in response.aiter_lines():
+                    if not line.startswith('data:'):
+                        continue
+                    try:
+                        chunk = json.loads(line[5:].strip())
+                    except json.JSONDecodeError:
+                        continue
+                    self.consume(chunk, blocks, buffers)
+                    if chunk.get('type') == 'message_delta':
+                        stop_reason = chunk.get('delta', {}).get('stop_reason', stop_reason)
+                        usage.update(chunk.get('usage', {}))
+                    elif chunk.get('type') == 'message_start':
+                        usage.update(chunk.get('message', {}).get('usage', {}))
+                    elif chunk.get('type') == 'error':
+                        raise ToolFailure('anthropic_stream_error')
+        return {'content':[blocks[i] for i in sorted(blocks)], 'usage':usage,
+                'stop_reason':stop_reason}
+
+    def consume(self, chunk, blocks, buffers):
+        """Assemble les blocs. Un appel d'outil n'existe qu'une fois son JSON complet."""
+        kind = chunk.get('type')
+        index = chunk.get('index')
+        if kind == 'content_block_start':
+            block = dict(chunk.get('content_block', {}))
+            blocks[index] = block
+            if block.get('type') == 'tool_use':
+                buffers[index] = ''
+                self.emit('tool_input_started', action=block.get('name'), block=index)
+        elif kind == 'content_block_delta':
+            delta = chunk.get('delta', {})
+            dtype = delta.get('type')
+            if dtype == 'text_delta':
+                blocks.setdefault(index, {'type':'text', 'text':''})
+                blocks[index]['text'] = blocks[index].get('text', '') + delta.get('text', '')
+                self.emit('text', block=index, text=delta.get('text', ''))
+            elif dtype == 'input_json_delta':
+                buffers[index] = buffers.get(index, '') + delta.get('partial_json', '')
+                # Fragment volontairement brut et incomplet : il sert à montrer
+                # que les arguments se remplissent, jamais à décider.
+                self.emit('tool_input', block=index, partial_json=delta.get('partial_json', ''))
+            # thinking_delta et signature_delta sont ignorés : raisonnement interne.
+        elif kind == 'content_block_stop':
+            raw = buffers.pop(index, None)
+            if raw is not None and index in blocks:
+                try:
+                    blocks[index]['input'] = json.loads(raw) if raw.strip() else {}
+                except json.JSONDecodeError:
+                    # JSON tronqué : le bloc est neutralisé plutôt qu'exécuté.
+                    blocks[index]['input'] = {}
+                    blocks[index]['truncated'] = True
+                self.emit('tool_input_complete', block=index,
+                          action=blocks[index].get('name'))
+
     async def decide(self, context):
-        result = await self.message([{'role':'user', 'content':json.dumps(context, ensure_ascii=False)}], SYSTEM, TOOLS)
+        # Streaming seulement quand un bus est branché : sans lui le
+        # comportement reste identique à celui du palier 2.
+        send = self.message_streaming if self.broker else self.message
+        result = await send([{'role':'user', 'content':json.dumps(context, ensure_ascii=False)}], SYSTEM, TOOLS)
         calls = [b for b in result.get('content', []) if b.get('type') == 'tool_use']
         if not calls:
             raise ToolFailure('model_missing_action')
