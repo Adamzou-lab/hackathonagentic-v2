@@ -7,12 +7,17 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, StrictBool
 
 from app.schemas import MissionInput
 from app.storage import Store, TERMINAL, StorageUnavailable
 from app.stream import Broker, mission_stream
 from app.agent.engine import Engine
 from app.agent.provider import AnthropicProvider
+
+
+class ApiControlInput(BaseModel):
+    enabled: StrictBool
 
 
 def create_app(*, db_path=None, access_token=None, provider=None, incident_path=None):
@@ -81,7 +86,21 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
     @app.get('/api/config', dependencies=[Depends(authorize)])
     async def config():
         return {'provider_ready':configured, 'max_domains':5, 'max_actions':100,
+                **app.state.store.api_control(),
                 'max_duration_minutes':30, 'poll_interval_ms':1000}
+
+    @app.post('/api/control', dependencies=[Depends(authorize)])
+    async def control(request: ApiControlInput):
+        if request.enabled and not configured:
+            raise HTTPException(503, 'Clé API absente du serveur.')
+        state = app.state.store.set_api_enabled(request.enabled)
+        stopping = []
+        if not request.enabled:
+            for mid, task in list(app.state.engine.tasks.items()):
+                if not task.done():
+                    app.state.engine.stop(mid, reason='api_disabled')
+                    stopping.append(mid)
+        return {**state, 'stopping_missions':stopping}
 
     @app.get('/api/incidents', dependencies=[Depends(authorize)])
     async def incidents():
@@ -105,6 +124,8 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
                 app.state.store.watch(request.watch_id)
             except KeyError:
                 raise HTTPException(404, 'Veille introuvable.')
+        if not app.state.store.api_control()['api_enabled']:
+            raise HTTPException(409, 'API désactivée par un opérateur. Les veilles enregistrées restent consultables.')
         if not configured:
             raise HTTPException(503, 'ANTHROPIC_API_KEY manquante côté serveur.')
         if app.state.engine.active():

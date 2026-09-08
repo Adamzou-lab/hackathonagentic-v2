@@ -68,6 +68,8 @@ class Engine:
 
     def guard(self, mid):
         d = self.store.get(mid)
+        if not self.store.api_control()['api_enabled']:
+            raise Halt('stopped')
         if d['status'] in TERMINAL or d['status'] == 'stopping':
             raise Halt('stopped')
         if time.time() >= d['started_epoch'] + d['duration_minutes'] * 60:

@@ -23,6 +23,9 @@ class Store(WatchStore):
             self.db.execute('PRAGMA journal_mode=WAL')
             self.db.execute('CREATE TABLE IF NOT EXISTS missions (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
             self.db.execute('CREATE TABLE IF NOT EXISTS events (mission_id TEXT, seq INTEGER, at TEXT, kind TEXT, data TEXT, PRIMARY KEY(mission_id,seq))')
+            self.db.execute('CREATE TABLE IF NOT EXISTS api_control (id INTEGER PRIMARY KEY CHECK(id=1), enabled INTEGER NOT NULL, changed_at TEXT NOT NULL)')
+            self.db.execute('CREATE TABLE IF NOT EXISTS api_control_events (at TEXT NOT NULL, enabled INTEGER NOT NULL)')
+            self.db.execute('INSERT OR IGNORE INTO api_control VALUES (1,1,?)', (now(),))
             self.db.commit()
             self.init_watches()
         except BaseException:
@@ -35,6 +38,20 @@ class Store(WatchStore):
 
     def check_available(self):
         self.db.check_available()
+
+    def api_control(self):
+        row = self.db.execute('SELECT enabled, changed_at FROM api_control WHERE id=1').fetchone()
+        if row is None or row[0] not in (0, 1):
+            self.db._fail('storage_data_invalid', 'api_control')
+        return {'api_enabled': bool(row[0]), 'api_changed_at': row[1]}
+
+    def set_api_enabled(self, enabled):
+        if self.api_control()['api_enabled'] != enabled:
+            at = now()
+            with self.db:
+                self.db.execute('UPDATE api_control SET enabled=?, changed_at=? WHERE id=1', (int(enabled), at))
+                self.db.execute('INSERT INTO api_control_events VALUES (?,?)', (at, int(enabled)))
+        return self.api_control()
 
     def incidents(self, limit=100):
         return self.db.incident_log.read_recent(limit)

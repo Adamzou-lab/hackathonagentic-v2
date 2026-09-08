@@ -1226,6 +1226,9 @@
     formError("");
     try {
       const config = await api("config");
+      renderApiControl(config);
+      if (config.api_enabled === false)
+        throw new Error("L’API est désactivée. Réactivez-la en haut de la page pour lancer une recherche.");
       if (!config.provider_ready)
         throw new Error(
           "La clé Anthropic n’est pas configurée sur le serveur.",
@@ -1258,6 +1261,54 @@
       ? "L’agent recherche jusqu’à 5 domaines pertinents, en privilégiant les publications officielles et d’origine. La sélection est visible dans le journal et modifiable depuis Mes veilles. Découverte et sélection utilisent 2 actions : prévoyez au moins 3 actions pour commencer la recherche."
       : "L’agent consultera uniquement ces domaines. Ajoutez au moins une source autorisée.";
   }
+  let apiEnabled = null;
+  let changingApi = false;
+  function renderApiControl(config) {
+    apiEnabled = config.api_enabled;
+    const button = q("#lk-api-toggle");
+    button.disabled = changingApi || typeof apiEnabled !== "boolean";
+    button.textContent = apiEnabled ? "Désactiver l’API" : "Réactiver l’API";
+    button.setAttribute("aria-label", button.textContent + (apiEnabled ? " — actuellement activée" : " — actuellement désactivée"));
+    const status = q("#lk-api-status");
+    status.hidden = false;
+    status.textContent = apiEnabled
+      ? "API activée · Les recherches réelles consomment du crédit."
+      : "API désactivée · Aucune nouvelle recherche payante. Mes veilles reste accessible. Les appels déjà envoyés peuvent avoir été facturés.";
+  }
+  async function refreshApiControl() {
+    if (demo || changingApi || !token) return;
+    try { renderApiControl(await api("config")); }
+    catch {
+      apiEnabled = null;
+      q("#lk-api-toggle").disabled = true;
+      q("#lk-api-toggle").textContent = "API · état indisponible";
+      q("#lk-api-status").hidden = false;
+      q("#lk-api-status").textContent = "État de l’API non confirmé. Vérifiez votre jeton et la connexion.";
+    }
+  }
+  q("#lk-api-toggle").onclick = async () => {
+    if (changingApi || typeof apiEnabled !== "boolean") return;
+    changingApi = true;
+    q("#lk-api-toggle").disabled = true;
+    try {
+      const result = await api("control", { method: "POST", body: JSON.stringify({ enabled: !apiEnabled }) });
+      renderApiControl(result);
+      if (result.stopping_missions?.length)
+        q("#lk-api-status").textContent += " Arrêt de la mission en cours demandé ; sa confirmation apparaît dans le journal.";
+    } catch {
+      q("#lk-api-status").hidden = false;
+      q("#lk-api-status").textContent = "Changement non confirmé. Vérification de l’état du serveur…";
+    } finally {
+      changingApi = false;
+      await refreshApiControl();
+    }
+  };
+  for (const selector of ["#lk-access", "#lk-library-access"])
+    q(selector).addEventListener("change", () => {
+      token = q(selector).value.trim();
+      refreshApiControl();
+    });
+  setInterval(refreshApiControl, 15000);
   q("#lk-source-mode").onchange = updateSourceMode;
   q("#lk-library-nav").onclick = () => openLibrary();
   q("#lk-library-new").onclick = newWatch;
@@ -1373,6 +1424,7 @@
       "Saisissez votre code pour retrouver la dernière mission de cet onglet.";
   }
   if (demo) {
+    q("#lk-api-toggle").hidden = true;
     q("#lk-demo-banner").hidden = false;
     q("#lk-auth").hidden = true;
     q("#lk-access").required = false;
