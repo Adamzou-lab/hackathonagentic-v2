@@ -57,6 +57,7 @@ class Store:
         data = dict(id=mid, **request.model_dump(), status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
                     actions_used=0, model_calls_used=0, network_requests_used=0,
+                    last_request_cost=None, total_estimated_cost_usd=0,
                     current_action=None, error=None, sources=[], findings=[], pages={},
                     keys={}, attempts={}, had_errors=False)
         self.save(data, 'created', {'request': request.model_dump()})
@@ -94,6 +95,9 @@ class Store:
         elapsed = max(0, int((data['ended_epoch'] or time.time()) - data['started_epoch']))
         public = {k: v for k, v in data.items() if k not in
                   {'pages', 'keys', 'attempts', 'started_epoch', 'ended_epoch', 'had_errors'}}
+        # Compatibilité avec les missions créées avant le palier 5.
+        public.setdefault('last_request_cost', None)
+        public.setdefault('total_estimated_cost_usd', 0)
         public.update(duration_seconds=duration, elapsed_seconds=elapsed,
                       remaining_seconds=max(0, duration-elapsed),
                       actions_remaining=max(0, data['action_budget']-data['actions_used']), events=self.events(mid))
