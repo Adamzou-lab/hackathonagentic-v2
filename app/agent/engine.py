@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from app.schemas import SearchInput, ReadInput, SaveInput
 from app.storage import TERMINAL
-from app.agent.web import WebReader, ToolFailure, check_url
+from app.storage.watches import finding_key
+from app.agent.discovery import DiscoveryInput, SelectionInput, normalize_candidate_url
+from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
 
 
 class Halt(Exception):
@@ -60,11 +62,11 @@ class Engine:
         d[counter] += 1
         self.store.save(d, kind, {counter:d[counter]})
 
-    async def call(self, mid, awaitable):
+    async def call(self, mid, awaitable, timeout=15):
         d = self.store.get(mid)
         left = d['started_epoch']+d['duration_minutes']*60-time.time()
         try:
-            async with asyncio.timeout(max(0.001, min(15, left))):
+            async with asyncio.timeout(max(0.001, min(timeout, left))):
                 return await awaitable
         except TimeoutError:
             self.guard(mid)
@@ -97,31 +99,101 @@ class Engine:
             try:
                 day = datetime.fromisoformat(date[:10]).date()
                 end = datetime.fromisoformat(d['created_at']).date()
-                finding['date_status'] = 'in_window' if end-timedelta(days=7) <= day <= end else 'outside_window'
+                start = datetime.fromisoformat(d['update_since']).date() if d.get('update_since') else end-timedelta(days=7)
+                finding['date_status'] = 'in_window' if start <= day <= end else 'outside_window'
             except ValueError:
                 finding.update(event_date=None, date_status='unknown')
         if len({e['source_id'] for e in finding['evidence']}) < 2:
             finding['confidence'] = 'single_source'
+        prior = self.store.watch(d['watch_id'])['findings'] if d.get('watch_id') else []
+        known = {f['entry_id']:f for f in prior if f['mission_id'] != mid}
+        change, related = args.change, args.related_finding_id
+        if related and related not in {f['entry_id'] for f in d.get('known_findings',[])}:
+            raise ToolFailure('unknown_related_finding')
+        links = [{'url':d['pages'][e['source_id']]['url'],'quote':e['quote']} for e in finding['evidence']]
+        key = finding_key(finding, links)
+        duplicate = next((f for f in known.values() if finding_key(f, f['source_links']) == key), None)
+        if duplicate:
+            change, related = 'duplicate', duplicate['entry_id']
+        if change == 'duplicate':
+            # Le rapprochement sémantique proposé reste tracé ; rien n'efface l'ancien constat.
+            if related not in known:
+                raise ToolFailure('unknown_related_finding')
+        finding.update(change=change, related_finding_id=related)
         fingerprint = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest()
         old = d['keys'].get(args.idempotency_key)
         if old and old != fingerprint:
             raise ToolFailure('idempotency_conflict')
         existing = next((f for f in d['findings'] if f['finding_id'] == fingerprint[:24]), None)
+        if change == 'update' and related not in known and not existing:
+            raise ToolFailure('related_finding_superseded')
         d['keys'][args.idempotency_key] = fingerprint
-        if not existing:
+        if not existing and change != 'duplicate':
             d['findings'].append(dict(finding_id=fingerprint[:24], **finding))
         result = {'finding_id': fingerprint[:24], 'disposition':'already_saved' if existing else 'created'}
-        self.store.save(d, 'finding_saved', result)
+        if change == 'duplicate':
+            result.update(disposition='already_known', related_finding_id=related)
+        elif change == 'update':
+            result.update(disposition='updated' if not existing else 'already_saved', related_finding_id=related)
+        self.store.save(d, 'finding_unchanged' if change == 'duplicate' else ('finding_updated' if change == 'update' else 'finding_saved'), result)
         return result
 
     async def execute(self, mid, name, raw, reader):
         if name in self.disabled_tools:
             raise ToolFailure('tool_disabled_for_test')
+        d = self.guard(mid)
+        if name in {'search_web','read_page','save_finding'} and not d['domains']:
+            raise ToolFailure('sources_not_selected')
+        if name == 'discover_sources':
+            args = DiscoveryInput.model_validate(raw)
+            if not d.get('auto_sources') or d['domains'] or d.get('discovery_attempted'):
+                raise ToolFailure('source_discovery_not_allowed')
+            d['discovery_attempted'] = True
+            self.store.save(d, 'source_discovery_started', {'query':args.query})
+            self.reserve(mid, 'model_calls_used', 60, 'model_started')
+            self.reserve(mid, 'network_requests_used', 200, 'network_started')
+            candidates, usage = await self.call(mid, self.provider.discover_sources(args.query), timeout=45)
+            checked = []
+            for candidate in candidates[:10]:
+                domain, url = normalize_candidate_url(candidate['url'])
+                if domain not in [c['domain'] for c in checked]:
+                    checked.append({'domain':domain,'url':url,'title':str(candidate.get('title',''))[:200]})
+            if not checked:
+                raise ToolFailure('source_discovery_no_candidates')
+            d = self.guard(mid)
+            d['source_candidates'] = checked
+            self.store.save(d, 'model_finished', {'usage':usage})
+            return checked
+        if name == 'select_sources':
+            args = SelectionInput.model_validate(raw)
+            candidates = {c['domain']:c for c in d.get('source_candidates',[])}
+            if not d.get('auto_sources') or d['domains'] or not candidates:
+                raise ToolFailure('source_selection_not_allowed')
+            if any(source.domain not in candidates for source in args.sources):
+                raise ToolFailure('source_not_discovered')
+            resolver = PublicResolver()
+            try:
+                for source in args.sources:
+                    self.reserve(mid,'network_requests_used',200,'network_started')
+                    await self.call(mid,resolver.resolve(source.domain,443))
+            except OSError as exc:
+                raise ToolFailure('source_dns_unavailable') from exc
+            finally:
+                await resolver.close()
+            d = self.guard(mid)
+            d['domains'] = [source.domain for source in args.sources]
+            d['selected_sources'] = [source.model_dump() | {'url':candidates[source.domain]['url']} for source in args.sources]
+            # Les anciennes sources non retenues ne sont pas réinjectées ensuite.
+            from urllib.parse import urlsplit
+            d['known_findings'] = [f for f in d.get('known_findings',[]) if
+                all(urlsplit(url).hostname in d['domains'] for url in f.get('urls',[]))]
+            self.store.save(d, 'sources_selected', {'sources':d['selected_sources'], 'known_findings_count':len(d['known_findings'])})
+            return d['selected_sources']
         if name == 'search_web':
             args = SearchInput.model_validate(raw)
             self.reserve(mid, 'model_calls_used', 60, 'model_started')
             self.reserve(mid, 'network_requests_used', 200, 'network_started')
-            result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']))
+            result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']), timeout=45)
             d = self.guard(mid)
             self.store.save(d, 'model_finished', {'usage':usage})
             return result
@@ -161,11 +233,15 @@ class Engine:
                     raise Halt('budget_exhausted')
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
-                context = {'scope_approved':scope_approved, 'mission':{k:d[k] for k in ['subject','domains','created_at']},
+                context = {'scope_approved':scope_approved, 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
+                           'source_candidates':d.get('source_candidates',[]),
+                           'known_findings':d.get('known_findings',[]),
+                           'known_findings_truncated':d.get('known_findings_truncated',False),
+                           'update_since':d.get('update_since'),
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
                            'recent_results':history[-4:]}
-                name, raw, usage = await self.call(mid, self.provider.decide(context))
+                name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45)
                 d = self.guard(mid)
                 self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
                 if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
@@ -186,6 +262,8 @@ class Engine:
                     self.store.save(d, 'scope_accepted', {})
                     continue
                 if name == 'finish':
+                    if not d['domains']:
+                        raise ToolFailure('sources_not_selected')
                     if raw:
                         raise ToolFailure('invalid_finish')
                     self.store.finish(mid, 'completed')
@@ -194,7 +272,7 @@ class Engine:
                 d = self.guard(mid)
                 d['current_action'] = name
                 # Only schema-valid, bounded parameters enter the journal.
-                schema = {'search_web':SearchInput, 'read_page':ReadInput, 'save_finding':SaveInput}.get(name)
+                schema = {'discover_sources':DiscoveryInput, 'select_sources':SelectionInput, 'search_web':SearchInput, 'read_page':ReadInput, 'save_finding':SaveInput}.get(name)
                 try:
                     parameters = schema.model_validate(raw).model_dump() if schema else {}
                 except ValidationError:
@@ -217,7 +295,7 @@ class Engine:
                         except ToolFailure:
                             pass
                     self.store.save(d, 'tool_error', {'tool':name, 'code':code})
-                    if code.startswith('anthropic_http_') or code in {'web_search_unavailable', 'execution_error'}:
+                    if name == 'discover_sources' or code.startswith(('anthropic_http_', 'source_discovery_')) or code in {'web_search_unavailable', 'execution_error'}:
                         fatal = code
                 d = self.guard(mid)
                 d['current_action'] = None

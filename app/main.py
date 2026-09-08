@@ -3,7 +3,7 @@ import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -66,11 +66,21 @@ def create_app(*, db_path=None, access_token=None, provider=None):
             state['reuse'] = {'reason': 'recent_completed' if state['status'] == 'completed' else 'already_running',
                              'window_hours': 24}
             return JSONResponse(state, status_code=200)
+        if request.watch_id:
+            try:
+                app.state.store.watch(request.watch_id)
+            except KeyError:
+                raise HTTPException(404, 'Veille introuvable.')
         if not configured:
             raise HTTPException(503, 'ANTHROPIC_API_KEY manquante côté serveur.')
         if app.state.engine.active():
             raise HTTPException(409, 'Une mission est déjà en cours.')
-        mid = app.state.store.create(request)
+        target = request.watch_id or app.state.store.exact_watch(request)
+        if not target and not request.allow_new:
+            candidates = app.state.store.similar_watches(request)
+            if candidates:
+                raise HTTPException(409, {'code':'similar_watches', 'candidates':candidates})
+        mid = app.state.store.create(request, watch_id=target)
         # Une seule mission tourne a la fois : le rattachement des fragments
         # provisoires est donc non ambigu.
         bind = getattr(app.state.provider, 'bind', None)
@@ -78,6 +88,18 @@ def create_app(*, db_path=None, access_token=None, provider=None):
             bind(mid)
         app.state.engine.launch(mid)
         return snapshot(mid)
+
+    @app.get('/api/watches', dependencies=[Depends(authorize)])
+    async def watches(query: str = Query(default='', max_length=500),
+                      limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)):
+        return app.state.store.list_watches(query, limit, offset)
+
+    @app.get('/api/watches/{wid}', dependencies=[Depends(authorize)])
+    async def watch(wid: str):
+        try:
+            return app.state.store.watch(wid)
+        except KeyError:
+            raise HTTPException(404, 'Veille introuvable.')
 
     @app.get('/api/missions/{mid}', dependencies=[Depends(authorize)])
     async def get(mid: str):

@@ -30,6 +30,8 @@
     read_page: "Lecture d’une source",
     save_finding: "Enregistrement d’un constat",
     finish: "Recherche terminée",
+    discover_sources: "Découverte des sources",
+    select_sources: "Sélection des domaines",
   };
   const eventNames = {
     scope_accepted: "Périmètre validé",
@@ -45,6 +47,11 @@
     page_attempt: "Consultation de page",
     page_saved: "Source conservée",
     finding_saved: "Constat enregistré",
+    finding_updated: "Constat actualisé",
+    finding_unchanged: "Information déjà connue",
+    sources_selected: "Domaines sélectionnés",
+    source_discovery_started: "Découverte des domaines démarrée",
+    enrichment_prepared: "Actualisation préparée",
     tool_error: "Difficulté rencontrée",
     stop_requested: "Arrêt demandé",
     finished: "Mission terminée",
@@ -56,6 +63,11 @@
     generation = 0,
     launching = false,
     failures = 0;
+  let view = "home",
+    libraryGeneration = 0,
+    selectedWatch = null,
+    pendingRequest = null;
+  let resumePending = false;
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -71,6 +83,19 @@
       ? "Date inconnue"
       : d.toLocaleDateString("fr-FR");
   };
+  const findingDate = (finding) =>
+    !finding.event_date || finding.date_status === "unknown"
+      ? "Date de publication inconnue"
+      : date(finding.event_date) +
+        (finding.date_status === "outside_window"
+          ? " · Hors période de recherche"
+          : "");
+  const confidenceLabel = (finding) =>
+    ({
+      single_source: "Une seule source",
+      corroborated: "Information corroborée",
+      conflicting: "Sources contradictoires",
+    })[finding.confidence] || "Niveau de corroboration non précisé";
   function https(value) {
     try {
       const url = new URL(value);
@@ -112,9 +137,35 @@
     }
   }
   function showWork() {
+    view = "work";
     q("#lk-home").hidden = true;
+    q("#lk-library").hidden = true;
     q("#lk-work").hidden = false;
     q("#lk-nav").hidden = false;
+  }
+  function pauseFollow() {
+    clearTimeout(timer);
+    generation++;
+    closeStream();
+  }
+  function newWatch() {
+    pauseFollow();
+    libraryGeneration++;
+    view = "home";
+    mission = null;
+    selectedWatch = null;
+    resumePending = false;
+    remember(null);
+    q("#lk-home").hidden = false;
+    q("#lk-library").hidden = true;
+    q("#lk-work").hidden = true;
+    q("#lk-nav").hidden = true;
+    q("#lk-access").value = token;
+    q(".lk-submit").textContent = "Lancer la veille";
+    q("#lk-similar").hidden = true;
+    formError("");
+    notice("");
+    q("#lk-home").scrollIntoView({ block: "start" });
   }
   function showTab(name) {
     for (const tab of ["results", "journal", "sources"])
@@ -256,6 +307,7 @@
             "Le serveur est momentanément indisponible.",
         );
         error.status = response.status;
+        error.detail = data.detail;
         throw error;
       }
       return data;
@@ -297,6 +349,15 @@
     if (d.status) return names[d.status] || d.status;
     if (d.request) return d.request.subject;
     if (d.source_id) return "Source " + d.source_id.slice(0, 8);
+    if (d.domains) return d.domains.join(", ");
+    if (d.sources)
+      return d.sources
+        .map((source) => source.domain)
+        .filter(Boolean)
+        .join(" · ");
+    if (d.query) return d.query;
+    if (d.known_findings_count !== undefined)
+      return `${d.known_findings_count} constat(s) déjà connus transmis au modèle${d.known_findings_truncated ? " · résumé limité" : ""}`;
     return "";
   }
   function eventRow(event, state) {
@@ -359,7 +420,20 @@
     q("#lk-status").textContent = names[state.status] || state.status;
     q("#lk-missiontitle").textContent = state.subject;
     q("#lk-missionsub").textContent =
-      "7 derniers jours · " + state.domains.length + " domaines autorisés";
+      (state.update_since
+        ? "Actualisation depuis le " + watchDate(state.update_since)
+        : "7 derniers jours") +
+      " · " +
+      (state.domains.length
+        ? state.domains.join(" · ")
+        : state.auto_sources
+          ? "Sélection automatique des sources en cours"
+          : "Aucun domaine");
+    q("#lk-mission-watch").hidden = !state.watch_id;
+    q("#lk-enrichment").textContent =
+      done && state.watch_id && state.status !== "refused"
+        ? `${state.new_findings_count || 0} nouveauté(s) ajoutée(s) · ${state.updated_findings_count || 0} constat(s) actualisé(s)`
+        : "";
     q("#lk-stop").hidden = done;
     q("#lk-stop").disabled = state.status === "stopping";
     q("#lk-stop span").textContent =
@@ -420,23 +494,13 @@
         if (source && https(source.url))
           sources.append(link(new URL(source.url).hostname, source.url));
       }
-      sources.append(
-        el(
-          "span",
-          "",
-          finding.date_status === "unknown"
-            ? "Date de publication inconnue"
-            : date(finding.event_date) +
-                (finding.date_status === "outside_window"
-                  ? " · Hors des 7 derniers jours"
-                  : ""),
-        ),
-      );
+      sources.append(el("span", "", findingDate(finding)));
       article.append(
         sources,
         el("h3", "", finding.title),
         el("p", "", finding.summary),
         el("div", "lk-interest", finding.developer_impact),
+        el("div", "lk-caveat", confidenceLabel(finding)),
       );
       for (const caveat of finding.caveats || [])
         article.append(el("div", "lk-caveat", caveat));
@@ -685,62 +749,481 @@
       Math.min(10000, 1000 * Math.max(1, failures)),
     );
   }
-  q("#lk-form").onsubmit = (e) => e.preventDefault();
-  q(".lk-submit").onclick = async () => {
-    if (launching || !q("#lk-form").reportValidity()) return;
-    if (!domains.length) {
-      formError("Ajoutez au moins un domaine autorisé.");
+  function libraryError(message) {
+    q("#lk-library-error").textContent = message;
+    q("#lk-library-error").hidden = !message;
+  }
+  function watchDate(value) {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime())
+      ? "Date inconnue"
+      : d.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+  }
+  function action(label, callback, cls = "lk-add") {
+    const button = el("button", cls, label);
+    button.type = "button";
+    button.onclick = callback;
+    return button;
+  }
+  let pendingLibraryWatch = null;
+  async function openLibrary(watchId = null) {
+    pauseFollow();
+    view = "library";
+    q("#lk-home").hidden = true;
+    q("#lk-work").hidden = true;
+    q("#lk-library").hidden = false;
+    q("#lk-nav").hidden = true;
+    q("#lk-library").scrollIntoView({ block: "start" });
+    libraryError("");
+    pendingLibraryWatch = watchId;
+    if (!token && !demo) {
+      libraryGeneration++;
+      q("#lk-library-auth").hidden = false;
+      q("#lk-watch-search").hidden = true;
+      q("#lk-watch-list").replaceChildren();
+      q("#lk-watch-detail").hidden = true;
+      q("#lk-library-status").textContent =
+        "Identifiez-vous pour retrouver les veilles conservées sur le serveur.";
+      q("#lk-library-access").focus();
       return;
     }
+    q("#lk-library-auth").hidden = true;
+    return watchId ? loadWatch(watchId) : loadLibrary();
+  }
+  function libraryFailure(error) {
+    libraryError(error.message);
+    q("#lk-library-status").textContent =
+      "Chargement interrompu. Vos données conservées ne sont pas modifiées.";
+    if (error.status === 401) {
+      token = "";
+      q("#lk-library-auth").hidden = false;
+      q("#lk-library-access").focus();
+    }
+  }
+  async function loadLibrary(offset = 0) {
+    const version = ++libraryGeneration;
+    q("#lk-watch-detail").hidden = true;
+    q("#lk-watch-list").hidden = false;
+    q("#lk-watch-search").hidden = false;
+    q("#lk-library-status").textContent = "Chargement de vos veilles…";
+    libraryError("");
+    try {
+      const data = await api(
+        "watches?query=" +
+          encodeURIComponent(q("#lk-watch-query").value.trim()) +
+          "&offset=" +
+          offset,
+      );
+      if (version !== libraryGeneration || view !== "library") return;
+      const host = q("#lk-watch-list");
+      if (!offset) host.replaceChildren();
+      q("#lk-watch-more")?.remove();
+      q("#lk-library-status").textContent =
+        `${data.total ?? data.watches.length} veille(s) · Consulter les résultats ne consomme aucun token.`;
+      for (const watch of data.watches) {
+        const card = el("article", "lk-watch-card");
+        card.append(
+          el(
+            "span",
+            "lk-watch-tag",
+            names[watch.status] || watch.status || "Conservée",
+          ),
+          el("h3", "", watch.subject),
+        );
+        card.append(
+          el(
+            "p",
+            "",
+            `${watch.findings_count} constat(s) · ${watch.run_count} recherche(s) · Dernière activité : ${watchDate(watch.updated_at)}`,
+          ),
+        );
+        const sources = el("div", "lk-watch-domains");
+        for (const domain of watch.domains || [])
+          sources.append(el("span", "", domain));
+        card.append(sources);
+        const buttons = el("div", "lk-watch-actions");
+        buttons.append(
+          action("Ouvrir la veille", () => loadWatch(watch.id)),
+          action(
+            "Dernier journal",
+            () => openMission(watch.latest_mission_id),
+            "lk-plain",
+          ),
+        );
+        card.append(buttons);
+        host.append(card);
+      }
+      if (offset + data.watches.length < data.total) {
+        const more = action(
+          "Afficher la suite",
+          () => {
+            more.disabled = true;
+            loadLibrary(offset + data.watches.length).finally(() => {
+              more.disabled = false;
+            });
+          },
+          "lk-plain",
+        );
+        more.id = "lk-watch-more";
+        host.append(more);
+      }
+      if (!offset && !data.watches.length)
+        host.append(
+          el(
+            "p",
+            "lk-empty",
+            q("#lk-watch-query").value.trim()
+              ? "Aucune veille pour cette recherche."
+              : "Votre première veille apparaîtra ici. Lancez un sujet pour commencer.",
+          ),
+        );
+    } catch (error) {
+      if (version === libraryGeneration && view === "library")
+        libraryFailure(error);
+    }
+  }
+  async function loadWatch(id) {
+    const version = ++libraryGeneration;
+    q("#lk-library-status").textContent =
+      "Chargement des résultats et des actualisations…";
+    libraryError("");
+    try {
+      const watch = await api("watches/" + encodeURIComponent(id));
+      if (version !== libraryGeneration || view !== "library") return;
+      selectedWatch = watch;
+      q("#lk-watch-search").hidden = true;
+      q("#lk-watch-list").hidden = true;
+      const host = q("#lk-watch-detail");
+      host.hidden = false;
+      host.replaceChildren();
+      q("#lk-library-status").textContent =
+        "Résultats cumulés · Chaque recherche conserve son propre journal.";
+      host.append(
+        action("← Toutes mes veilles", () => loadLibrary(), "lk-plain"),
+      );
+      const header = el("div", "lk-watch-detail-head");
+      header.append(
+        el("h2", "", watch.subject),
+        el(
+          "p",
+          "",
+          `Créée le ${watchDate(watch.created_at)} · Dernière activité : ${watchDate(watch.updated_at)}`,
+        ),
+      );
+      const buttons = el("div", "lk-watch-actions");
+      const refresh = action("Actualiser cette veille", () =>
+        refreshWatch(watch, refresh),
+      );
+      buttons.append(
+        refresh,
+        action(
+          "Modifier les sources et les limites",
+          () => editWatch(watch),
+          "lk-plain",
+        ),
+      );
+      header.append(
+        buttons,
+        el(
+          "p",
+          "lk-accesshelp",
+          "Actualiser recherche les nouveautés et peut consommer du crédit API. Les résultats déjà connus sont conservés.",
+        ),
+      );
+      const sources = el("div", "lk-watch-domains");
+      for (const domain of watch.domains || [])
+        sources.append(el("span", "", domain));
+      header.append(
+        sources,
+        el(
+          "small",
+          "lk-accesshelp",
+          watch.auto_sources
+            ? "Sources choisies automatiquement · sélection consultable dans le journal"
+            : "Sources choisies manuellement",
+        ),
+      );
+      host.append(header);
+      for (const finding of watch.findings || []) {
+        const article = el("article", "lk-result");
+        const sourceLinks = el("div", "lk-source");
+        for (const source of finding.source_links || [])
+          sourceLinks.append(link(source.title || source.url, source.url));
+        sourceLinks.append(el("span", "", findingDate(finding)));
+        article.append(
+          sourceLinks,
+          el("h3", "", finding.title),
+          el("p", "", finding.summary),
+          el("div", "lk-interest", finding.developer_impact),
+          el("div", "lk-caveat", confidenceLabel(finding)),
+        );
+        for (const caveat of finding.caveats || [])
+          article.append(el("div", "lk-caveat", caveat));
+        if (finding.change === "updated")
+          article.append(el("span", "lk-watch-tag", "Information actualisée"));
+        const details = el("details", "lk-caveat");
+        details.append(el("summary", "", "Preuves et provenance"));
+        for (const evidence of finding.evidence || [])
+          details.append(el("blockquote", "", evidence.quote));
+        if (finding.mission_id)
+          details.append(
+            action(
+              "Ouvrir la recherche d’origine",
+              () => openMission(finding.mission_id),
+              "lk-plain",
+            ),
+          );
+        article.append(details);
+        host.append(article);
+      }
+      if (!watch.findings?.length)
+        host.append(
+          el(
+            "p",
+            "lk-empty",
+            "Aucun constat enregistré pour le moment. Les recherches et leurs éventuelles erreurs sont consultables ci-dessous.",
+          ),
+        );
+      const runs = el("section", "lk-watch-runs");
+      runs.append(el("h3", "", "Historique des recherches"));
+      for (const run of [...(watch.runs || [])].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at),
+      )) {
+        const row = el("div", "lk-watch-run");
+        const detail = el("div");
+        detail.append(
+          el(
+            "strong",
+            "",
+            `${watchDate(run.created_at)} · ${names[run.status] || run.status}`,
+          ),
+        );
+        detail.append(
+          el(
+            "small",
+            "",
+            `${run.actions_used ?? 0} action(s) · ${run.new_findings_count ?? 0} nouveauté(s) · ${run.updated_findings_count ?? 0} constat(s) actualisé(s)`,
+          ),
+        );
+        row.append(
+          detail,
+          action("Résultats et journal", () => openMission(run.id), "lk-plain"),
+        );
+        runs.append(row);
+      }
+      host.append(runs);
+    } catch (error) {
+      if (version === libraryGeneration && view === "library")
+        libraryFailure(error);
+    }
+  }
+  function missionRequest(state, overrides = {}) {
+    return {
+      subject: state.subject,
+      domains: state.auto_sources ? [] : state.domains,
+      auto_sources: Boolean(state.auto_sources),
+      action_budget: state.action_budget,
+      duration_minutes: Math.round(state.duration_seconds / 60),
+      ...overrides,
+    };
+  }
+  async function refreshWatch(watch, button) {
+    if (launching) return;
+    button.disabled = true;
+    libraryError("");
+    try {
+      const previous = await api(
+        "missions/" + encodeURIComponent(watch.latest_mission_id),
+      );
+      await launchRequest(
+        missionRequest(previous, {
+          subject: watch.subject,
+          watch_id: watch.id,
+          force_refresh: true,
+        }),
+      );
+    } catch (error) {
+      libraryFailure(error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+  async function editWatch(watch) {
+    libraryError("");
+    try {
+      const previous = await api(
+        "missions/" + encodeURIComponent(watch.latest_mission_id),
+      );
+      newWatch();
+      selectedWatch = watch;
+      q("#lk-topic").value = watch.subject;
+      q("#lk-budget").value = previous.action_budget;
+      q("#lk-duration").value = Math.round(previous.duration_seconds / 60);
+      domains = [...watch.domains];
+      q("#lk-source-mode").value = watch.domains.length ? "manual" : "auto";
+      drawDomains();
+      updateSourceMode();
+      updateLimits();
+      q(".lk-submit").textContent = "Actualiser cette veille";
+    } catch (error) {
+      libraryFailure(error);
+    }
+  }
+  async function openMission(id) {
+    libraryError("");
+    try {
+      const state = await api("missions/" + encodeURIComponent(id));
+      activateMission(state);
+    } catch (error) {
+      libraryFailure(error);
+    }
+  }
+  function activateMission(state) {
+    pauseFollow();
+    libraryGeneration++;
+    failures = 0;
+    notice("");
+    showTab("results");
+    render(state);
+    q("#lk-work").scrollIntoView({ block: "start" });
+    if (state.reuse)
+      notice(
+        state.reuse.reason === "recent_completed"
+          ? "Cette veille a déjà été réalisée au cours des dernières 24 heures. Résultats existants réutilisés : aucun nouvel appel au modèle."
+          : "Cette veille est déjà en cours. Vous retrouvez la même mission, sans nouveau lancement.",
+      );
+    q("#lk-connection").textContent = terminal.has(state.status)
+      ? "Recherche conservée · Aucun appel au modèle pour cette consultation"
+      : "Connexion au suivi…";
+    if (!terminal.has(state.status)) follow(state.id, generation);
+  }
+  function showSimilar(candidates, request) {
+    pendingRequest = request;
+    view = "home";
+    q("#lk-home").hidden = false;
+    q("#lk-work").hidden = true;
+    q("#lk-library").hidden = true;
+    const host = q("#lk-similar");
+    host.hidden = false;
+    host.replaceChildren(
+      el("strong", "", "Une veille proche existe déjà"),
+      el(
+        "p",
+        "",
+        "Choisissez de l’enrichir ou de conserver un sujet distinct. Aucune recherche n’a encore été lancée.",
+      ),
+    );
+    for (const watch of candidates)
+      host.append(
+        action(`Enrichir « ${watch.subject} »`, () =>
+          launchRequest({
+            ...pendingRequest,
+            watch_id: watch.id,
+            force_refresh: true,
+          }),
+        ),
+      );
+    host.append(
+      action(
+        "Créer une veille distincte",
+        () => launchRequest({ ...pendingRequest, allow_new: true }),
+        "lk-plain",
+      ),
+    );
+    host.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+  async function launchRequest(request) {
+    if (launching) return;
     launching = true;
     q(".lk-submit").disabled = true;
+    root
+      .querySelectorAll("#lk-similar button")
+      .forEach((b) => (b.disabled = true));
     formError("");
-    token = q("#lk-access").value.trim();
     try {
       const config = await api("config");
       if (!config.provider_ready)
         throw new Error(
           "La clé Anthropic n’est pas configurée sur le serveur.",
         );
-      const previous = demo ? null : remembered();
-      let state;
-      if (previous) {
-        try {
-          state = await api("missions/" + encodeURIComponent(previous));
-        } catch (error) {
-          if (error.status !== 404) throw error;
-          remember(null);
-        }
-      }
-      if (!state)
-        state = await api("missions", {
-          method: "POST",
-          body: JSON.stringify({
-            subject: q("#lk-topic").value.trim(),
-            domains,
-            action_budget: Number(q("#lk-budget").value),
-            duration_minutes: Number(q("#lk-duration").value),
-          }),
-        });
+      const state = await api("missions", {
+        method: "POST",
+        body: JSON.stringify(request),
+      });
+      q("#lk-similar").hidden = true;
       q("#lk-access").value = "";
-      clearTimeout(timer);
-      generation++;
-      closeStream();
-      failures = 0;
-      notice("");
-      showTab("results");
-      render(state);
-      if (state.reuse)
-        notice(state.reuse.reason === "recent_completed"
-          ? "Cette veille a déjà été réalisée au cours des dernières 24 heures. Résultats existants réutilisés : aucun nouvel appel au modèle."
-          : "Cette veille est déjà en cours. Vous retrouvez la même mission, sans nouveau lancement.");
-      if (!terminal.has(state.status)) follow(state.id, generation);
+      resumePending = false;
+      activateMission(state);
     } catch (error) {
-      formError(error.message);
+      if (error.status === 409 && error.detail?.code === "similar_watches")
+        showSimilar(error.detail.candidates || [], request);
+      else if (view === "library") libraryFailure(error);
+      else formError(error.message);
     } finally {
       launching = false;
       q(".lk-submit").disabled = false;
+      root
+        .querySelectorAll("#lk-similar button")
+        .forEach((b) => (b.disabled = false));
     }
+  }
+  function updateSourceMode() {
+    const automatic = q("#lk-source-mode").value === "auto";
+    q("#lk-manual-sources").hidden = automatic;
+    q("#lk-source-help").textContent = automatic
+      ? "L’agent recherche jusqu’à 5 domaines pertinents, en privilégiant les publications officielles et d’origine. La sélection est visible dans le journal et modifiable depuis Mes veilles. Découverte et sélection utilisent 2 actions : prévoyez au moins 3 actions pour commencer la recherche."
+      : "L’agent consultera uniquement ces domaines. Ajoutez au moins une source autorisée.";
+  }
+  q("#lk-source-mode").onchange = updateSourceMode;
+  q("#lk-library-nav").onclick = () => openLibrary();
+  q("#lk-library-new").onclick = newWatch;
+  q("#lk-mission-watch").onclick = () => openLibrary(mission.watch_id);
+  q("#lk-watch-search").onsubmit = (event) => {
+    event.preventDefault();
+    loadLibrary();
+  };
+  q("#lk-library-reload").onclick = () => openLibrary();
+  q("#lk-library-auth").onsubmit = (event) => {
+    event.preventDefault();
+    token = q("#lk-library-access").value.trim();
+    q("#lk-library-access").value = "";
+    openLibrary(pendingLibraryWatch);
+  };
+  q("#lk-form").onsubmit = (e) => e.preventDefault();
+  q(".lk-submit").onclick = async () => {
+    if (launching || !q("#lk-form").reportValidity()) return;
+    token = q("#lk-access").value.trim() || token;
+    if (resumePending && remembered()) {
+      try {
+        const state = await api("missions/" + encodeURIComponent(remembered()));
+        q("#lk-access").value = "";
+        resumePending = false;
+        activateMission(state);
+      } catch (error) {
+        formError(error.message);
+        if (error.status === 404) {
+          remember(null);
+          resumePending = false;
+          q(".lk-submit").textContent = "Lancer la veille";
+        }
+      }
+      return;
+    }
+    const automatic = q("#lk-source-mode").value === "auto";
+    if (!automatic && !domains.length) {
+      formError("Ajoutez au moins un domaine autorisé.");
+      return;
+    }
+    await launchRequest({
+      subject: q("#lk-topic").value.trim(),
+      domains: automatic ? [] : domains,
+      auto_sources: automatic,
+      action_budget: Number(q("#lk-budget").value),
+      duration_minutes: Number(q("#lk-duration").value),
+      ...(selectedWatch
+        ? { watch_id: selectedWatch.id, force_refresh: true }
+        : {}),
+    });
   };
   q("#lk-stop").onclick = async () => {
     if (!mission || terminal.has(mission.status)) return;
@@ -761,20 +1244,7 @@
       q("#lk-stop").disabled = false;
     }
   };
-  q("#lk-nav").onclick = () => {
-    if (mission && !terminal.has(mission.status)) return;
-    clearTimeout(timer);
-    generation++;
-    closeStream();
-    mission = null;
-    remember(null);
-    q("#lk-home").hidden = false;
-    q("#lk-work").hidden = true;
-    q("#lk-nav").hidden = true;
-    q("#lk-access").value = token;
-    q(".lk-submit").textContent = "Lancer la veille";
-    notice("");
-  };
+  q("#lk-nav").onclick = newWatch;
   root
     .querySelectorAll("[data-tab]")
     .forEach((button) => (button.onclick = () => showTab(button.dataset.tab)));
@@ -782,7 +1252,10 @@
     clearTimeout(timer);
     generation++;
     closeStream();
+    view = "home";
+    resumePending = true;
     q("#lk-home").hidden = false;
+    q("#lk-library").hidden = true;
     q("#lk-work").hidden = true;
     q("#lk-access").value = "";
     q(".lk-submit").textContent = "Retrouver ma veille";
@@ -813,6 +1286,7 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   if (!demo && remembered()) {
+    resumePending = true;
     q(".lk-submit").textContent = "Retrouver ma veille";
     q("#lk-accesshelp").textContent =
       "Saisissez votre code pour retrouver la dernière mission de cet onglet.";
@@ -826,6 +1300,7 @@
     q("#lk-connection").textContent = "Simulation locale · Aucun appel API";
   }
   drawDomains();
+  updateSourceMode();
   updateLimits();
   if (window.lucide)
     window.lucide.createIcons({ attrs: { width: 16, height: 16 } });

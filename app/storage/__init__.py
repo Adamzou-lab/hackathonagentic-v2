@@ -3,9 +3,9 @@ import json
 import sqlite3
 import time
 import uuid
-import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+from app.storage.watches import WatchStore, watch_identity
 
 TERMINAL = {'refused', 'stopped', 'completed', 'budget_exhausted', 'deadline_reached', 'failed'}
 
@@ -14,7 +14,7 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
-class Store:
+class Store(WatchStore):
     def __init__(self, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, check_same_thread=False)
@@ -22,6 +22,7 @@ class Store:
         self.db.execute('CREATE TABLE IF NOT EXISTS missions (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
         self.db.execute('CREATE TABLE IF NOT EXISTS events (mission_id TEXT, seq INTEGER, at TEXT, kind TEXT, data TEXT, PRIMARY KEY(mission_id,seq))')
         self.db.commit()
+        self.init_watches()
 
     def get(self, mid):
         row = self.db.execute('SELECT data FROM missions WHERE id=?', (mid,)).fetchone()
@@ -32,9 +33,7 @@ class Store:
     @staticmethod
     def request_identity(data):
         # Comparaison déterministe : aucune classification ni requête au modèle.
-        subject = ' '.join(unicodedata.normalize('NFC', data['subject']).casefold().split())
-        return (subject, tuple(sorted(set(data['domains']))),
-                data['action_budget'], data['duration_minutes'])
+        return (*watch_identity(data), data['action_budget'], data['duration_minutes'])
 
     def reusable(self, request, max_age_seconds=86400):
         wanted = self.request_identity(request.model_dump())
@@ -47,19 +46,34 @@ class Store:
             "ORDER BY json_extract(data, '$.started_epoch') DESC", (cutoff,))
         for (encoded,) in rows:
             data = json.loads(encoded)
+            if request.watch_id and self.watch_id_for(data['id']) != request.watch_id:
+                continue
+            if request.force_refresh and data['status'] == 'completed':
+                continue
             if data.get('had_errors') or self.request_identity(data) != wanted:
                 continue
             return data['id']
         return None
 
-    def create(self, request):
+    def create(self, request, watch_id=None):
         mid = uuid.uuid4().hex
-        data = dict(id=mid, **request.model_dump(), status='pending', created_at=now(),
+        wid = watch_id or request.watch_id or self.exact_watch(request)
+        previous = self.prior_context(wid, request.domains, request.auto_sources) if wid else {}
+        wid = wid or mid
+        inputs = request.model_dump(exclude={'watch_id','force_refresh','allow_new'})
+        data = dict(id=mid, watch_id=wid, **inputs, **previous, status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
                     actions_used=0, model_calls_used=0, network_requests_used=0,
                     current_action=None, error=None, sources=[], findings=[], pages={},
                     keys={}, attempts={}, had_errors=False)
         self.save(data, 'created', {'request': request.model_dump()})
+        with self.db:
+            self.db.execute('INSERT OR IGNORE INTO watches VALUES (?,?,?)', (wid,request.subject,data['created_at']))
+            self.db.execute('INSERT INTO watch_runs VALUES (?,?)', (mid,wid))
+        if previous:
+            self.save(data, 'enrichment_prepared', {'base_mission_id':previous['base_mission_id'],
+                'known_findings':previous['known_findings'], 'known_findings_count':len(previous['known_findings']),
+                'known_findings_truncated':previous['known_findings_truncated'], 'update_since':previous['update_since']})
         return mid
 
     def save(self, data, kind, event):
@@ -94,6 +108,9 @@ class Store:
         elapsed = max(0, int((data['ended_epoch'] or time.time()) - data['started_epoch']))
         public = {k: v for k, v in data.items() if k not in
                   {'pages', 'keys', 'attempts', 'started_epoch', 'ended_epoch', 'had_errors'}}
+        public['watch_id'] = self.watch_id_for(mid)
+        public['new_findings_count'] = sum(f.get('change','new') == 'new' for f in data['findings'])
+        public['updated_findings_count'] = sum(f.get('change') == 'update' for f in data['findings'])
         public.update(duration_seconds=duration, elapsed_seconds=elapsed,
                       remaining_seconds=max(0, duration-elapsed),
                       actions_remaining=max(0, data['action_budget']-data['actions_used']), events=self.events(mid))

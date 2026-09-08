@@ -50,7 +50,7 @@ Le point à retenir pour l'oral : le palier 2 déplace une partie du modèle de 
 
 Une question tombera au checkpoint : si l'agent ne sort pas de la liste de domaines autorisée, comment joint-il son moteur de recherche ?
 
-- Les **domaines documentaires** sont les sources que l'agent a le droit de consulter. Ils sont choisis au lancement et changent d'une mission à l'autre.
+- Les **domaines documentaires** sont les sources que l'agent a le droit de consulter. Ils sont choisis manuellement au lancement ou sélectionnés parmi les résultats d’une découverte publique contrôlée, puis restent fixes pendant les lectures. Ils changent d'une mission à l'autre.
 - Les **destinations techniques** sont les services dont le programme a besoin pour fonctionner : le prestataire de recherche et le fournisseur de modèle. Elles sont configurées côté serveur, elles ne sont pas choisies par l'opérateur, et le modèle ne peut pas en ajouter.
 
 Ces deux listes ne se mélangent pas. Une destination technique n'ouvre aucun droit de lecture documentaire : un résultat renvoyé par le prestataire de recherche reste soumis à la liste des domaines documentaires avant la moindre visite.
@@ -82,3 +82,17 @@ Le checkpoint impose que l'un des deux explique ce document en entier, seul. Les
 
 - pourquoi une page ne peut pas élargir les permissions de l'agent, même lorsqu'elle influence ses décisions, et où cette limite est appliquée concrètement,
 - pourquoi l'ordre d'arrêt est stocké en base et pas gardé en mémoire.
+
+
+## Canaux ajoutés : historique et sources automatiques
+
+| Entrée | Risque | Contrôle et limite |
+|---|---|---|
+| Constats des veilles précédentes | Injection persistante ou fait ancien présenté comme actuel | Contexte factuel borné, explicitement non fiable et versionné. Références aux exécutions d'origine. Preuves relues pour toute nouvelle sauvegarde. Les anciennes traces ne sont jamais modifiées. |
+| Domaines candidats découverts | Source malveillante, domaine inventé ou adresse privée | Candidats issus uniquement des résultats structurés du prestataire, jusqu'à 5 sélectionnés par le modèle. Validation HTTPS, syntaxe publique, appartenance aux candidats et DNS public ; nouveau contrôle à la connexion. Pas de certification de fiabilité absolue. |
+| Rapprochement de sujets | Fusion de recherches dont l'objectif diffère | Similarité locale approximative utilisée uniquement pour suggérer des fiches. L'opérateur confirme le rattachement ; différences de domaines manuels non fusionnées silencieusement. |
+| Réponse mise en cache | Résultat devenu ancien | Date originale conservée, fenêtre de réutilisation de 24 h visible, bouton Actualiser explicite et payant. |
+
+La découverte initiale est une extension bornée du périmètre : elle interroge le
+prestataire de recherche sans liste de domaines documentaire préalable. Les
+lectures de pages par Lockin n'ont lieu qu'après sélection et contrôles serveur.

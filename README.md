@@ -1,6 +1,6 @@
 # Lockin — Le Métronome
 
-Agent de veille web d’Adam et Panaki. Choisissez un sujet, vos domaines autorisés et votre budget ; suivez la recherche en direct et arrêtez-la à tout moment.
+Agent de veille web d’Adam et Panaki. Choisissez un sujet, votre budget et des sources automatiques ou manuelles ; suivez la recherche en direct et arrêtez-la à tout moment.
 
 ## Démarrer en moins de 5 minutes
 
@@ -108,3 +108,18 @@ Tests backend sans appels Anthropic après installation : `.venv/bin/python -m p
 ## Organisation Git
 
 Contributions sur `adam` et `panaki`, intégration par pull request vers `dev`, puis validation vers `main`.
+
+
+## Retrouver et actualiser ses veilles
+
+« Mes veilles » donne accès aux résultats conservés et à chaque exécution avec ses
+preuves. Une demande identique récente réutilise les résultats sans nouveau crédit
+API. « Actualiser » recherche les nouveautés dans la même fiche, avec un nouveau
+budget et un contexte factuel borné. Les sujets proches font l'objet d'une
+proposition à confirmer.
+
+Le mode Sources automatiques découvre puis sélectionne jusqu'à cinq domaines
+pertinents, en privilégiant les publications d'origine. Les domaines restent
+visibles et modifiables pour l'actualisation suivante. La préparation utilise deux
+actions ; elle ne garantit pas un classement objectif de fiabilité. Le mode manuel
+reste disponible. La démonstration `?demo` illustre ces parcours sans appels API.

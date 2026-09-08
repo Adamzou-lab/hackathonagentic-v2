@@ -873,3 +873,153 @@ body {
   overflow: auto;
   font-size: 12px;
 }
+#lockin-mock .lk-library {
+  padding: 36px 32px;
+  max-width: 1140px;
+  margin: auto;
+  min-height: 500px;
+}
+#lockin-mock .lk-library h2 {
+  margin: 6px 0;
+  font-size: 32px;
+  letter-spacing: -0.03em;
+}
+#lockin-mock .lk-watch-search,
+#lockin-mock .lk-watch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+#lockin-mock .lk-watch-search {
+  margin: 24px 0 12px;
+}
+#lockin-mock .lk-watch-search input,
+#lockin-mock .lk-library-auth input {
+  min-width: 0;
+  flex: 1;
+  padding: 12px 14px;
+  border: 1px solid var(--lk-line);
+  background: var(--lk-panel);
+  border-radius: 10px;
+  color: var(--lk-text);
+}
+#lockin-mock .lk-library-auth {
+  padding: 24px;
+  margin-top: 20px;
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  border-radius: 16px;
+}
+#lockin-mock .lk-library-auth label {
+  display: block;
+  margin-bottom: 10px;
+}
+#lockin-mock .lk-watch-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+#lockin-mock .lk-watch-card {
+  min-width: 0;
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  border-radius: 18px;
+  padding: 24px;
+}
+#lockin-mock .lk-watch-card h3 {
+  font-size: 19px;
+  margin: 12px 0 8px;
+}
+#lockin-mock .lk-watch-card p {
+  color: var(--lk-muted);
+  font-size: 12px;
+}
+#lockin-mock .lk-watch-tag {
+  font-size: 11px;
+  color: var(--lk-accent);
+  background: var(--lk-soft);
+  padding: 4px 9px;
+  border-radius: 6px;
+  display: inline-block;
+}
+#lockin-mock .lk-watch-detail-head {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--lk-line);
+  margin-bottom: 24px;
+}
+#lockin-mock .lk-watch-detail-head p {
+  color: var(--lk-muted);
+}
+#lockin-mock .lk-watch-run {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--lk-line);
+}
+#lockin-mock .lk-watch-run small {
+  display: block;
+  color: var(--lk-muted);
+}
+#lockin-mock .lk-watch-runs {
+  margin-top: 32px;
+}
+#lockin-mock .lk-watch-domains {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+#lockin-mock .lk-watch-domains span {
+  font-size: 12px;
+  background: var(--lk-soft);
+  border-radius: 6px;
+  padding: 4px 9px;
+  overflow-wrap: anywhere;
+}
+#lockin-mock .lk-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+#lockin-mock #lk-similar button {
+  margin: 5px 8px 5px 0;
+}
+#lockin-mock #lk-source-mode {
+  width: 100%;
+  color: var(--lk-text);
+  background: var(--lk-panel);
+  border: 1px solid var(--lk-line);
+  padding: 12px;
+  border-radius: 10px;
+}
+#lockin-mock #lk-mission-watch {
+  color: var(--lk-accent);
+}
+#lockin-mock #lk-watch-detail .lk-result {
+  max-width: 850px;
+}
+@media (max-width: 640px) {
+  #lockin-mock .lk-library {
+    padding: 24px 18px;
+  }
+  #lockin-mock .lk-watch-list {
+    grid-template-columns: 1fr;
+  }
+  #lockin-mock .lk-chrome {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  #lockin-mock .lk-watch-search input {
+    flex-basis: 100%;
+  }
+  #lockin-mock .lk-titlebar {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}

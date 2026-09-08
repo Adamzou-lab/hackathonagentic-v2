@@ -164,3 +164,49 @@ nouvelles publications intervenues depuis ne sont pas recherchées dans cette
 fenêtre. Les refus, erreurs, arrêts et résultats limités par budget/durée ne sont
 pas réutilisés. La recherche de doublons est persistante en SQLite et protégée
 par la même authentification que les missions (un espace opérateur partagé).
+
+## Fiches de veille, actualisations et sources automatiques
+
+`GET /api/watches?query=&limit=50&offset=0` (authentifié) liste les fiches :
+`{watches: [{id, subject, created_at, updated_at, latest_mission_id, status,
+findings_count, run_count, domains, auto_sources}], total}`. Maximum 100 fiches/page.
+`GET /api/watches/{id}` ajoute `findings` agrégés et `runs` (dernière exécution en
+premier). Chaque constat porte `entry_id`, `mission_id`, `source_links`, `change`
+(new/updated) et, si nécessaire, `previous_versions`. Les snapshots et journaux
+originaux restent accessibles via `/api/missions/{id}`.
+
+Champs supplémentaires de `POST /api/missions` :
+
+- `auto_sources` : false par défaut API. Avec true, fournir `domains: []` ;
+  le modèle découvre et sélectionne de un à cinq domaines publics pertinents.
+- `watch_id` : rattachement explicitement choisi à une fiche existante.
+- `force_refresh` : true lance une actualisation même avant 24 h ; un double clic
+  pendant une mission identique retrouve toutefois l'exécution en cours.
+- `allow_new` : accepte une nouvelle fiche malgré les suggestions de rapprochement.
+
+Sans `watch_id`, un sujet identique avec les mêmes domaines/mode de sources est
+rattaché à la plus ancienne fiche correspondante. Budget/durée peuvent évoluer
+entre actualisations, mais ne sont pas ignorés pour réutiliser une exécution
+récente. Les sujets proches sont repérés localement (comparaison de texte, aucun
+appel modèle) : réponse 409 `detail: {code: similar_watches, candidates: [...]}`.
+L'opérateur confirme une fiche ou choisit de créer une veille distincte. Ce repérage
+est une suggestion approximative, pas une preuve d'identité sémantique.
+
+Une actualisation reçoit de nouveaux compteurs et une nouvelle date. `update_since`
+correspond à la dernière exécution terminée sans erreur ; `known_findings` contient
+au plus 20 constats et 12 000 caractères avec références, sans anciens journaux ni
+pages complètes. Une réduction des domaines manuels retire aussi le contexte issu
+d'autres domaines. La découverte automatique refiltre ce contexte après sélection.
+
+`save_finding` accepte `change: new | update | duplicate` et `related_finding_id`
+(entry_id connu, requis pour update/duplicate). Les preuves doivent être relues
+dans la nouvelle exécution. Les doublons reconnus ne grossissent pas la fiche ;
+une évolution conserve l'historique. Le rapprochement sémantique reste imparfait.
+
+Actions supplémentaires : `discover_sources({query})` renvoie jusqu'à 10 candidats
+structurés d'une recherche réelle ; `select_sources({sources:[{domain,reason}]})`
+autorise uniquement de 1 à 5 candidats, DNS public vérifié. Le lecteur revérifie le
+DNS à la connexion et respecte robots.txt. Aucun outil de lecture n'est autorisé
+avant sélection. Une erreur de découverte termine la mission avec sa trace.
+Cette préparation consomme deux actions et quatre appels modèle avant la première
+recherche documentaire. Elle reste dans le budget global, sans appels cachés.
