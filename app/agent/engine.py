@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from app.schemas import SearchInput, ReadInput, SaveInput
 from app.storage import TERMINAL
 from app.agent.web import WebReader, ToolFailure, check_url
+from app.costs import estimate_request_cost
 
 
 class Halt(Exception):
@@ -59,6 +60,18 @@ class Engine:
             raise Halt('budget_exhausted')
         d[counter] += 1
         self.store.save(d, kind, {counter:d[counter]})
+
+    def model_finished(self, data, usage, **fields):
+        """Persiste métriques et coût ensemble, après une réponse complète seulement."""
+        event = {'usage':usage, **fields}
+        cost = estimate_request_cost(getattr(self.provider, 'model', None), usage)
+        if cost:
+            data['last_request_cost'] = cost
+            if cost['amount_usd'] is not None:
+                data['total_estimated_cost_usd'] = round(
+                    data.get('total_estimated_cost_usd', 0) + cost['amount_usd'], 8)
+            event['request_cost'] = cost
+        self.store.save(data, 'model_finished', event)
 
     async def call(self, mid, awaitable):
         d = self.store.get(mid)
@@ -123,7 +136,7 @@ class Engine:
             self.reserve(mid, 'network_requests_used', 200, 'network_started')
             result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']))
             d = self.guard(mid)
-            self.store.save(d, 'model_finished', {'usage':usage})
+            self.model_finished(d, usage)
             return result
         if name == 'read_page':
             args = ReadInput.model_validate(raw)
@@ -167,7 +180,7 @@ class Engine:
                            'recent_results':history[-4:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context))
                 d = self.guard(mid)
-                self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
+                self.model_finished(d, usage, proposed_action=name)
                 if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
                     reasons = {
                         'out_of_scope': 'Lockin réalise des veilles documentaires sur des sources publiques. Cette demande sort de ce cadre.',
