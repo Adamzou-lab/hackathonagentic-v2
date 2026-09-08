@@ -368,6 +368,7 @@ class Engine:
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
                 context = {'scope_approved':scope_approved, 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
+                           'finding_target':2 if d['action_budget'] <= 10 else None,
                            'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
                                'title':p.get('title',''), 'published_at':p.get('published_at'),
                                'passages':passages(p)[:12]} for p in list(d['pages'].values())[-2:]],

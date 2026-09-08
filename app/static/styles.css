@@ -1119,4 +1119,5 @@ body {
   color: var(--lk-text);
 }
 #lockin-mock .lk-brief-limits { padding: 20px 0 8px; color: var(--lk-muted); }
+#lockin-mock .lk-result .lk-interest { display: block; }
 #lockin-mock .lk-source { flex-wrap: wrap; overflow-wrap: anywhere; }

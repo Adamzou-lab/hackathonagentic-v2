@@ -75,3 +75,13 @@ def test_repeated_page_uses_stored_content_without_network(tmp_path):
             assert any(e['kind']=='page_reused' for e in store.events(mid))
         finally: store.db.close()
     asyncio.run(scenario())
+
+def test_short_watch_stops_research_after_target_is_saved():
+    class Recording(AnthropicProvider):
+        async def message(self, messages, system, tools):
+            assert {t['name'] for t in tools} == {'finish','refuse'}
+            return {'content':[{'type':'tool_use','name':'finish','input':{}}]}
+    result=asyncio.run(Recording('fixture','fixture').decide({'scope_approved':True,
+        'mission':{'domains':['example.com']},'finding_target':2,
+        'saved_findings':[{'title':'Un'},{'title':'Deux'}],'actions_remaining':5}))
+    assert result[0]=='finish'

@@ -1298,6 +1298,7 @@
   let apiEnabled = null;
   let changingApi = false;
   function renderApiControl(config) {
+    if (demo) return;
     if (typeof config.public_access === "boolean") {
       publicAccess = config.public_access;
       q("#lk-auth").hidden = publicAccess;

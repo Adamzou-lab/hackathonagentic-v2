@@ -277,6 +277,10 @@ class AnthropicProvider:
         if approved and mission.get('domains') and context.get('evidence_catalog') and context.get('actions_remaining', 100) <= 2:
             available_tools = [tool for tool in TOOLS if tool['name'] in {'save_finding','finish','refuse'}]
             system += '\nFin du budget : sauvegarde maintenant un constat étayé à partir de evidence_catalog. Si aucun passage ne soutient un constat pertinent, termine sans inventer.'
+        target = context.get('finding_target')
+        if approved and target and len(context.get('saved_findings', [])) >= target:
+            available_tools = [tool for tool in TOOLS if tool['name'] in {'finish','refuse'}]
+            system += '\nObjectif de la veille courte atteint : les constats demandés sont sauvegardés. Termine maintenant, sans nouvel appel de recherche ni sauvegarde en double.'
         result = await send([{'role':'user', 'content':json.dumps(context, ensure_ascii=False)}],
                             system, available_tools)
         calls = [b for b in result.get('content', []) if b.get('type') == 'tool_use']
