@@ -148,3 +148,19 @@ Le polling d'`/api/missions/{id}` reste valable et sert de repli : le flux n'est
 ### Limite connue
 
 `search_web` n'est pas diffusé au fil de l'eau. C'est un outil exécuté côté Anthropic dont le résultat arrive d'un bloc : il n'a pas de progression lisible. Seule la décision du modèle, où il compose ses arguments, est diffusée.
+
+### Réutilisation d'une veille récente
+
+`POST /api/missions` renvoie `200` et la mission existante si une demande identique
+est déjà en cours ou s'est terminée sans erreur depuis moins de 24 heures.
+L'objet `reuse` indique `reason: recent_completed | already_running` et
+`window_hours: 24`. Aucun nouvel appel au modèle ni nouvelle mission n'est créé.
+Un nouveau lancement conserve la réponse `202`.
+
+Identité : sujet normalisé Unicode NFC, casse et espaces ignorés, même ensemble
+de domaines autorisés, même budget d'actions et même durée. Les paraphrases ne
+sont pas fusionnées. Les résultats et leur date originale sont conservés ; les
+nouvelles publications intervenues depuis ne sont pas recherchées dans cette
+fenêtre. Les refus, erreurs, arrêts et résultats limités par budget/durée ne sont
+pas réutilisés. La recherche de doublons est persistante en SQLite et protégée
+par la même authentification que les missions (un espace opérateur partagé).

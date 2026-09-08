@@ -3,6 +3,7 @@ import json
 import sqlite3
 import time
 import uuid
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,6 +28,29 @@ class Store:
         if row is None:
             raise KeyError(mid)
         return json.loads(row[0])
+
+    @staticmethod
+    def request_identity(data):
+        # Comparaison déterministe : aucune classification ni requête au modèle.
+        subject = ' '.join(unicodedata.normalize('NFC', data['subject']).casefold().split())
+        return (subject, tuple(sorted(set(data['domains']))),
+                data['action_budget'], data['duration_minutes'])
+
+    def reusable(self, request, max_age_seconds=86400):
+        wanted = self.request_identity(request.model_dump())
+        cutoff = time.time() - max_age_seconds
+        rows = self.db.execute(
+            "SELECT data FROM missions WHERE "
+            "json_extract(data, '$.status') IN ('pending', 'running') OR "
+            "(json_extract(data, '$.status') = 'completed' AND "
+            "json_extract(data, '$.ended_epoch') >= ?) "
+            "ORDER BY json_extract(data, '$.started_epoch') DESC", (cutoff,))
+        for (encoded,) in rows:
+            data = json.loads(encoded)
+            if data.get('had_errors') or self.request_identity(data) != wanted:
+                continue
+            return data['id']
+        return None
 
     def create(self, request):
         mid = uuid.uuid4().hex

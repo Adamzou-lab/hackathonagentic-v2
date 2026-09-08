@@ -730,6 +730,10 @@
       notice("");
       showTab("results");
       render(state);
+      if (state.reuse)
+        notice(state.reuse.reason === "recent_completed"
+          ? "Cette veille a déjà été réalisée au cours des dernières 24 heures. Résultats existants réutilisés : aucun nouvel appel au modèle."
+          : "Cette veille est déjà en cours. Vous retrouvez la même mission, sans nouveau lancement.");
       if (!terminal.has(state.status)) follow(state.id, generation);
     } catch (error) {
       formError(error.message);

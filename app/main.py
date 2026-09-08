@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.schemas import MissionInput
@@ -60,6 +60,12 @@ def create_app(*, db_path=None, access_token=None, provider=None):
 
     @app.post('/api/missions', status_code=202, dependencies=[Depends(authorize)])
     async def create(request: MissionInput):
+        existing = app.state.store.reusable(request)
+        if existing:
+            state = snapshot(existing)
+            state['reuse'] = {'reason': 'recent_completed' if state['status'] == 'completed' else 'already_running',
+                             'window_hours': 24}
+            return JSONResponse(state, status_code=200)
         if not configured:
             raise HTTPException(503, 'ANTHROPIC_API_KEY manquante côté serveur.')
         if app.state.engine.active():
