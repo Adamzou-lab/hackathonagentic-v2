@@ -1,21 +1,28 @@
 import asyncio
 import hashlib
 import json
+import inspect
 import time
+import uuid
 import aiohttp
 from datetime import datetime, timedelta
 from pydantic import ValidationError
 
 from app.schemas import SearchInput, ReadInput, SaveInput
-from app.storage import TERMINAL
+from app.storage import TERMINAL, StorageUnavailable, now
 from app.storage.watches import finding_key
 from app.agent.discovery import DiscoveryInput, SelectionInput, normalize_candidate_url
 from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
+from app.agent.failures import failure_code, must_stop
 
 
 class Halt(Exception):
     def __init__(self, status):
         self.status = status
+
+
+class Abandoned(Exception):
+    """L'attente n'a pas confirmé son annulation ; sa réponse tardive est ignorée."""
 
 
 class Engine:
@@ -24,6 +31,13 @@ class Engine:
         self.reader_factory = reader_factory
         self.tasks = {}
         self.disabled_tools = frozenset()
+        self.heartbeat_seconds = 2.0
+        self.closing = False
+        self.storage_failed = False
+        self.stop_grace_seconds = 2.0
+        self.stop_clocks = {}
+        self.unconfirmed_stops = set()
+        self.pulses = {}
 
     def finish_pending_action(self, mid, code):
         """Fermer aussi la trace d'un outil interrompu, sans exposer l'exception."""
@@ -39,12 +53,17 @@ class Engine:
         return any(not t.done() for t in self.tasks.values())
 
     def launch(self, mid):
+        if self.closing or self.storage_failed or self.unconfirmed_stops:
+            raise RuntimeError('engine_unavailable')
         task = asyncio.create_task(self.run(mid))
         self.tasks[mid] = task
         def completed(task):
             if task.cancelled():
                 # Cancellation before the coroutine's first instruction bypasses its try/finally.
-                self.store.finish(mid, 'stopped' if self.store.get(mid)['status'] == 'stopping' else 'failed')
+                try:
+                    self.store.finish(mid, 'stopped' if self.store.get(mid)['status'] == 'stopping' else 'failed')
+                except StorageUnavailable:
+                    self.storage_failed = True
         task.add_done_callback(completed)
 
     def guard(self, mid):
@@ -62,21 +81,93 @@ class Engine:
         d[counter] += 1
         self.store.save(d, kind, {counter:d[counter]})
 
-    async def call(self, mid, awaitable, timeout=15):
+    def end_operation(self, mid, outcome, code=None):
         d = self.store.get(mid)
-        left = d['started_epoch']+d['duration_minutes']*60-time.time()
-        try:
-            async with asyncio.timeout(max(0.001, min(timeout, left))):
-                return await awaitable
-        except TimeoutError:
-            self.guard(mid)
-            raise ToolFailure('timeout')
+        operation = d.get('current_operation')
+        if operation:
+            d['current_operation'] = None
+            data = {'operation_id':operation['id'], 'dependency':operation['dependency'],
+                    'operation':operation['operation'], 'outcome':outcome}
+            if code:
+                data['code'] = code
+            self.store.save(d, 'operation_finished', data)
 
-    def stop(self, mid):
+    def expire_stop(self, mid):
+        """Ne jamais confirmer l'arrêt d'une dépendance qui ignore l'annulation."""
+        if mid in self.unconfirmed_stops:
+            return
+        d = self.store.get(mid)
+        if d['status'] in TERMINAL:
+            return
+        operation = d.get('current_operation') or {}
+        self.report_failure(mid, 'cancellation_unconfirmed',
+            operation.get('dependency', 'engine'), operation.get('operation', 'cancel'),
+            operation.get('id'))
+        self.unconfirmed_stops.add(mid)
+        # Store.finish clôture ce qui est encore ouvert avec outcome unknown.
+        self.store.finish(mid, 'failed', 'cancellation_unconfirmed')
+
+    def check_abandoned(self, mid):
+        if mid in self.unconfirmed_stops:
+            raise Abandoned()
+
+    def report_failure(self, mid, code, dependency, operation, operation_id=None):
+        d = self.store.get(mid)
+        d['had_errors'] = True
+        self.store.save(d, 'dependency_failed', {
+            'dependency':dependency, 'operation':operation, 'code':code,
+            'reaction':'stop' if must_stop(operation, code, dependency) else 'continue',
+            'operation_id':operation_id,
+            'action_number':d['actions_used'] if d.get('current_action') else None,
+        })
+
+    async def call(self, mid, awaitable, timeout=15, *, dependency='tool', operation='call'):
+        entered = False
+        try:
+            d = self.guard(mid)
+            left = d['started_epoch']+d['duration_minutes']*60-time.time()
+            op = {'id':uuid.uuid4().hex, 'dependency':dependency,
+                  'operation':operation, 'started_at':now()}
+            d['current_operation'] = op
+            self.store.save(d, 'operation_started', {'operation_id':op['id'],
+                'dependency':dependency, 'operation':operation})
+            try:
+                async with asyncio.timeout(max(0.001, min(timeout, left))):
+                    entered = True
+                    result = await awaitable
+            except asyncio.CancelledError:
+                self.check_abandoned(mid)
+                self.end_operation(mid, 'cancelled', 'cancelled')
+                raise
+            except (Halt, StorageUnavailable, Abandoned):
+                raise
+            except Exception as exc:
+                self.check_abandoned(mid)
+                # Deadline/arrêt prévalent sur un timeout arrivé au même instant.
+                self.guard(mid)
+                code = failure_code(exc, dependency)
+                self.report_failure(mid, code, dependency, operation, op['id'])
+                self.end_operation(mid, 'error', code)
+                failure = ToolFailure(code)
+                failure.recorded = True
+                failure.dependency = dependency
+                raise failure from None
+            self.check_abandoned(mid)
+            self.guard(mid)
+            self.end_operation(mid, 'success')
+            return result
+        finally:
+            if not entered and inspect.iscoroutine(awaitable):
+                awaitable.close()
+
+    def stop(self, mid, reason='operator'):
         d = self.store.get(mid)
         if d['status'] not in TERMINAL and d['status'] != 'stopping':
             d['status'] = 'stopping'
-            self.store.save(d, 'stop_requested', {})
+            d['stop_reason'] = reason
+            d['stop_requested_at'] = now()
+            self.store.save(d, 'stop_requested', {'reason':reason})
+            self.stop_clocks[mid] = time.monotonic()
             task = self.tasks.get(mid)
             if task:
                 task.cancel()
@@ -152,7 +243,8 @@ class Engine:
             self.store.save(d, 'source_discovery_started', {'query':args.query})
             self.reserve(mid, 'model_calls_used', 60, 'model_started')
             self.reserve(mid, 'network_requests_used', 200, 'network_started')
-            candidates, usage = await self.call(mid, self.provider.discover_sources(args.query), timeout=45)
+            candidates, usage = await self.call(mid, self.provider.discover_sources(args.query), timeout=45,
+                dependency='model_provider', operation='discover_sources')
             checked = []
             for candidate in candidates[:10]:
                 domain, url = normalize_candidate_url(candidate['url'])
@@ -175,7 +267,7 @@ class Engine:
             try:
                 for source in args.sources:
                     self.reserve(mid,'network_requests_used',200,'network_started')
-                    await self.call(mid,resolver.resolve(source.domain,443))
+                    await self.call(mid,resolver.resolve(source.domain,443), dependency='dns', operation='select_sources')
             except OSError as exc:
                 raise ToolFailure('source_dns_unavailable') from exc
             finally:
@@ -193,7 +285,8 @@ class Engine:
             args = SearchInput.model_validate(raw)
             self.reserve(mid, 'model_calls_used', 60, 'model_started')
             self.reserve(mid, 'network_requests_used', 200, 'network_started')
-            result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']), timeout=45)
+            result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']), timeout=45,
+                dependency='model_provider', operation='search_web')
             d = self.guard(mid)
             self.store.save(d, 'model_finished', {'usage':usage})
             return result
@@ -206,7 +299,7 @@ class Engine:
             d['attempts'][url] = d['attempts'].get(url, 0) + 1
             self.store.save(d, 'page_attempt', {'url':url, 'attempt':d['attempts'][url]})
             try:
-                page = await self.call(mid, reader.read(url, d['domains']))
+                page = await self.call(mid, reader.read(url, d['domains']), dependency='web_page', operation='read_page')
             except (aiohttp.ClientError, OSError) as exc:
                 raise ToolFailure('unavailable') from exc
             d = self.guard(mid)
@@ -219,11 +312,42 @@ class Engine:
             return self.save_finding(mid, SaveInput.model_validate(raw))
         raise ToolFailure('unknown_tool')
 
+    async def heartbeat(self, mid, owner):
+        while True:
+            await asyncio.sleep(self.heartbeat_seconds)
+            try:
+                d = self.store.get(mid)
+                if d['status'] in TERMINAL:
+                    return
+                if (d['status'] == 'stopping' and mid in self.stop_clocks and
+                        time.monotonic() - self.stop_clocks[mid] >= self.stop_grace_seconds):
+                    self.expire_stop(mid)
+                    return
+                self.store.save(d, 'heartbeat', {'status':d['status']})
+            except StorageUnavailable:
+                # L'incident est déjà écrit dans le journal de secours. Ne plus
+                # attendre une réponse réseau qui pourrait déclencher un outil.
+                self.storage_failed = True
+                owner.cancel()
+                return
+
     async def run(self, mid):
+        pulse = asyncio.create_task(self.heartbeat(mid, asyncio.current_task()))
+        self.pulses[mid] = pulse
+        try:
+            await self._run(mid)
+        except StorageUnavailable:
+            self.storage_failed = True
+        finally:
+            pulse.cancel()
+            await asyncio.gather(pulse, return_exceptions=True)
+            self.pulses.pop(mid, None)
+
+    async def _run(self, mid):
         history = []
         scope_approved = False
-        reader = self.reader_factory(lambda: self.reserve(mid, 'network_requests_used', 200, 'network_started'))
         try:
+            reader = self.reader_factory(lambda: self.reserve(mid, 'network_requests_used', 200, 'network_started'))
             d = self.guard(mid)
             d['status'] = 'running'
             self.store.save(d, 'started', {})
@@ -241,7 +365,8 @@ class Engine:
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
                            'recent_results':history[-4:]}
-                name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45)
+                name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
+                    dependency='model_provider', operation='decide')
                 d = self.guard(mid)
                 self.store.save(d, 'model_finished', {'usage':usage, 'proposed_action':name})
                 if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
@@ -281,10 +406,10 @@ class Engine:
                 fatal = None
                 try:
                     result = await self.execute(mid, name, raw, reader)
-                except (Halt, asyncio.CancelledError):
+                except (Halt, asyncio.CancelledError, StorageUnavailable, Abandoned):
                     raise
                 except Exception as exc:
-                    code = exc.code if isinstance(exc, ToolFailure) else ('invalid_input' if isinstance(exc, ValidationError) else 'execution_error')
+                    code = failure_code(exc)
                     result = {'error': code}
                     d = self.guard(mid)
                     d['had_errors'] = True
@@ -295,31 +420,61 @@ class Engine:
                         except ToolFailure:
                             pass
                     self.store.save(d, 'tool_error', {'tool':name, 'code':code})
-                    if name == 'discover_sources' or code.startswith(('anthropic_http_', 'source_discovery_')) or code in {'web_search_unavailable', 'execution_error'}:
+                    dependency = getattr(exc, 'dependency', 'tool')
+                    if not getattr(exc, 'recorded', False):
+                        self.report_failure(mid, code, dependency, name)
+                    if must_stop(name, code, dependency):
                         fatal = code
                 d = self.guard(mid)
                 d['current_action'] = None
                 self.store.save(d, 'action_finished', {'tool':name, 'action_number':d['actions_used'], 'result':result if name != 'read_page' else
                                 {k:v for k,v in result.items() if k != 'text'}})
                 if fatal:
-                    raise ToolFailure(fatal)
+                    failure = ToolFailure(fatal)
+                    failure.recorded = True
+                    raise failure
                 # Bound context even when recent results contain large pages.
                 history.append({'tool':name, 'result':result})
+        except Abandoned:
+            return
         except asyncio.CancelledError:
+            self.end_operation(mid, 'cancelled', 'cancelled')
             self.finish_pending_action(mid, 'cancelled')
             self.store.finish(mid, 'stopped' if self.store.get(mid)['status'] == 'stopping' else 'failed',
                               None if self.store.get(mid)['status'] == 'stopping' else 'Processus arrêté.')
         except Halt as halt:
+            self.end_operation(mid, 'cancelled', halt.status)
             self.finish_pending_action(mid, halt.status)
             self.store.finish(mid, halt.status)
+        except StorageUnavailable:
+            raise
         except Exception as exc:
             # Never return upstream exception strings, headers, credentials or response bodies.
-            code = exc.code if isinstance(exc, ToolFailure) else 'execution_error'
+            code = failure_code(exc)
+            if not getattr(exc, 'recorded', False):
+                self.report_failure(mid, code, 'engine', 'decide')
+            self.end_operation(mid, 'error', code)
             self.finish_pending_action(mid, code)
             self.store.finish(mid, 'failed', code)
 
     async def close(self):
+        self.closing = True
         tasks = [t for t in self.tasks.values() if not t.done()]
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        for mid, task in self.tasks.items():
+            if not task.done():
+                try:
+                    self.stop(mid, reason='server_shutdown')
+                except StorageUnavailable:
+                    self.storage_failed = True
+                    task.cancel()
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=self.stop_grace_seconds)
+            for mid, task in self.tasks.items():
+                if task in pending:
+                    try:
+                        self.expire_stop(mid)
+                    except StorageUnavailable:
+                        self.storage_failed = True
+                    pulse = self.pulses.get(mid)
+                    if pulse:
+                        pulse.cancel()

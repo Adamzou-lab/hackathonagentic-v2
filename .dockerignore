@@ -20,6 +20,10 @@ data/
 *.sqlite
 *.sqlite3
 *.log
+*.db-wal
+*.db-shm
+*.incidents.jsonl
+.lockin-storage-*.json
 
 # Historique et outillage Git
 .git

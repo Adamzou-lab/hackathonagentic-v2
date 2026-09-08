@@ -8,20 +8,21 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse,
 from fastapi.staticfiles import StaticFiles
 
 from app.schemas import MissionInput
-from app.storage import Store, TERMINAL
+from app.storage import Store, TERMINAL, StorageUnavailable
 from app.stream import Broker, mission_stream
 from app.agent.engine import Engine
 from app.agent.provider import AnthropicProvider
 
 
-def create_app(*, db_path=None, access_token=None, provider=None):
+def create_app(*, db_path=None, access_token=None, provider=None, incident_path=None):
     token = os.getenv('LOCKIN_ACCESS_TOKEN', '') if access_token is None else access_token
     key = os.getenv('ANTHROPIC_API_KEY', '')
     configured = provider is not None or bool(key)
 
     @asynccontextmanager
     async def lifespan(app):
-        store = Store(db_path or os.getenv('LOCKIN_DB_PATH', 'data/lockin.db'))
+        store = Store(db_path or os.getenv('LOCKIN_DB_PATH', 'data/lockin.db'),
+                      incident_path=incident_path or os.getenv('LOCKIN_INCIDENT_PATH') or None)
         store.recover()
         broker = Broker()
         app.state.store = store
@@ -37,6 +38,13 @@ def create_app(*, db_path=None, access_token=None, provider=None):
 
     app = FastAPI(title='Lockin', version='0.1.0', lifespan=lifespan)
 
+    @app.exception_handler(StorageUnavailable)
+    async def storage_unavailable(request, exc):
+        # Le stockage possède son journal de secours indépendant de SQLite.
+        # Aucune réponse ne prétend que l'arrêt a été enregistré dans la base.
+        return JSONResponse({'detail':exc.code, 'dependency':'sqlite', 'reaction':'stop'},
+                            status_code=503)
+
     def authorize(authorization: str = Header(default='')):
         if len(token) < 32:
             raise HTTPException(503, 'LOCKIN_ACCESS_TOKEN doit contenir au moins 32 caractères.')
@@ -51,6 +59,9 @@ def create_app(*, db_path=None, access_token=None, provider=None):
 
     @app.get('/health')
     async def health():
+        app.state.store.check_available()
+        if app.state.engine.unconfirmed_stops:
+            raise HTTPException(503, 'cancellation_unconfirmed')
         return {'status':'ok', 'service':'Lockin'}
 
     @app.get('/api/config', dependencies=[Depends(authorize)])
@@ -58,8 +69,17 @@ def create_app(*, db_path=None, access_token=None, provider=None):
         return {'provider_ready':configured, 'max_domains':5, 'max_actions':100,
                 'max_duration_minutes':30, 'poll_interval_ms':1000}
 
+    @app.get('/api/incidents', dependencies=[Depends(authorize)])
+    async def incidents():
+        """Secours consultable même quand le journal principal est indisponible."""
+        return app.state.store.incidents()
+
     @app.post('/api/missions', status_code=202, dependencies=[Depends(authorize)])
     async def create(request: MissionInput):
+        app.state.store.check_available()
+        if (app.state.engine.closing or app.state.engine.storage_failed or
+                app.state.engine.unconfirmed_stops):
+            raise HTTPException(503, 'Agent arrêté ; intervention opérateur requise.')
         existing = app.state.store.reusable(request)
         if existing:
             state = snapshot(existing)

@@ -101,7 +101,7 @@ def test_disabled_tool_is_counted_and_never_called(tmp_path):
 
 
 @pytest.mark.parametrize('failure,expected,status', [
-    (ToolFailure('timeout'),'timeout','completed'),
+    (ToolFailure('timeout'),'timeout','failed'),
     (ToolFailure('anthropic_http_429'),'anthropic_http_429','failed'),
     (RuntimeError('secret-never-in-journal'),'execution_error','failed')])
 def test_failure_always_has_result_trace(tmp_path, failure, expected, status):
