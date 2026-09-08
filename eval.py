@@ -186,7 +186,7 @@ async def s05_aucun_resultat(store):
                  fabrique()).run(mid)
     etat = store.snapshot(mid)
     ok = (etat['status'] == 'completed' and not etat['findings']
-          and 'Aucun résultat exploitable' in etat['summary']['text'])
+          and etat['summary']['text'] == 'Recherche terminée sans constat étayé à conserver sur les sources consultées.')
     return ok, f"statut={etat['status']} constats={len(etat['findings'])}"
 
 
