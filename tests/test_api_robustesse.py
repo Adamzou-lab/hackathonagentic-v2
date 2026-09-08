@@ -29,6 +29,8 @@ class ProviderCompteur:
 
     async def decide(self, context):
         self.appels += 1
+        if not context.get('scope_approved'):
+            return 'accept_scope', {}, {'input_tokens':1, 'output_tokens':1}
         return 'finish', {}, {'input_tokens':1, 'output_tokens':1}
 
     async def search(self, query, k, domains):
@@ -57,6 +59,7 @@ def client_lent(tmp_path):
     app = create_app(db_path=str(tmp_path/'lent.db'), access_token=TOKEN, provider=provider)
     with TestClient(app) as c:
         c.provider = provider
+        c.store = app.state.store
         yield c
 
 
@@ -66,6 +69,7 @@ def client(tmp_path):
     app = create_app(db_path=str(tmp_path/'p5.db'), access_token=TOKEN, provider=provider)
     with TestClient(app) as c:
         c.provider = provider
+        c.store = app.state.store
         yield c
 
 
@@ -249,6 +253,7 @@ def test_double_soumission_pendant_execution(client_lent):
     assert b.status_code in (200, 409), b.text
     if b.status_code == 200:
         assert b.json().get('reuse'), 'une réutilisation doit être annoncée'
+        assert b.json()['id'] == a.json()['id']
     else:
         assert detail_lisible(b)
     assert c.provider.lancements <= 1, 'deux boucles d’agent démarrées'
@@ -300,6 +305,7 @@ def test_aucune_mission_creee_par_une_entree_invalide(client):
                     {**VALIDE, 'inconnu':1}, {**VALIDE, 'action_budget':'3'}]:
         assert poste(client, mauvais).status_code == 422
     assert client.provider.appels == 0
-    assert client.get('/api/watches', headers=AUTH).json() in ([], {'watches':[]}) or True
-    # Aucune mission n'est joignable : aucun identifiant n'a été distribué.
-    assert client.get('/api/missions/inexistante', headers=AUTH).status_code == 404
+    response = client.get('/api/watches', headers=AUTH)
+    assert response.status_code == 200
+    assert response.json() == {'watches': [], 'total': 0}
+    assert client.store.db.execute('SELECT COUNT(*) FROM missions').fetchone()[0] == 0

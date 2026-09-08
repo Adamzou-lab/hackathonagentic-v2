@@ -25,7 +25,7 @@ vérifie que ce compteur reste à **zéro** : un refus d'entrée n'a donc jamais
 déclenché d'appel facturable.
 
 Commande : `pytest tests/test_api_robustesse.py -q` → **52 passés**.
-Sortie brute des réponses : `python /tmp/probe.py` (script de relevé, joint plus bas).
+Les assertions et les réponses vérifiées sont reproductibles dans ce fichier de tests.
 
 ---
 
@@ -93,6 +93,9 @@ une simple validation de forme.
 
 ## 5. Authentification
 
+Ces tests utilisent le mode privé. Sur le site de démonstration configuré avec
+`LOCKIN_PUBLIC_ACCESS=true`, l'accès sans jeton est volontairement autorisé.
+
 | Requête | Résultat attendu | Résultat observé | Preuve |
 | --- | --- | --- | --- |
 | Sans en-tête | 401 | **401** | `test_authentification_requise` |
@@ -115,12 +118,14 @@ mission soit réellement encore en cours au moment de la seconde.
 | Sujet différent pendant qu'une mission tourne | Refus explicite | **409** · « Une mission est déjà en cours. » | `test_seconde_mission_differente_refusee` | — |
 | Boucles d'agent démarrées sur ces trois requêtes | 1 | **1** | compteur `lancements` du fournisseur | — |
 
-**Limite constatée, à signaler à Codex.** Lorsque la première mission est déjà
-**terminée**, une soumission identique ne réutilise pas : elle crée une nouvelle
-mission d'enrichissement rattachée à la même veille, avec `base_mission_id`
-renseigné. C'est cohérent avec la fonction de veille, mais cela signifie qu'un
-double clic après la fin d'une mission peut relancer un travail facturable. Le
-comportement est peut-être voulu ; il n'est pas documenté aujourd'hui.
+**Réutilisation après succès.** Une mission `completed`, sans erreur, terminée
+depuis moins de 24 heures est réutilisée pour une demande identique (mêmes sources,
+budget et durée), sauf actualisation forcée. Le test
+`test_cache_and_forced_refresh_keep_one_watch_and_immutable_old_run` dans
+`tests/test_watches.py` vérifie le même identifiant et l'absence de lancement.
+Les missions refusées, interrompues ou en erreur ne bénéficient pas de ce cache.
+Le fournisseur factice renvoyait auparavant `finish` avant d'accepter le périmètre :
+cela produisait un refus et ne testait donc pas le cache d'une mission réussie.
 
 ## 7. Recherche avec API désactivée
 
@@ -139,7 +144,8 @@ importante du palier : elle est la seule que l'utilisateur verra s'il coupe l'AP
 
 `test_aucune_mission_creee_par_une_entree_invalide` enchaîne sept entrées
 invalides de natures différentes, puis vérifie que le compteur du fournisseur est
-resté à zéro et qu'aucun identifiant de mission n'a été distribué.
+resté à zéro, que la liste des veilles est vide et que la table des missions
+contient exactement zéro ligne.
 
 **Résultat observé : 0 appel, 0 mission.**
 
@@ -181,7 +187,9 @@ Deux points relèvent de fichiers que je ne dois pas modifier :
 
 ## Parcours de démonstration, quatre minutes
 
-À jouer devant l'examinateur, sans aucun appel payant. Chronométrage indicatif.
+À jouer avec le fournisseur factice pour éviter les appels payants. Sur le site
+réel, le lancement d'une mission avec l'API activée peut consommer du crédit.
+Chronométrage indicatif.
 
 **0:00 — Le refus le plus parlant.** Couper l'API depuis l'interface, puis lancer
 une recherche. Montrer la réponse : code `api_disabled` et la phrase « Aucun appel
@@ -202,8 +210,8 @@ interne de la machine qui l'héberge.
 **2:30 — Le double clic.** Lancer une mission, puis relancer la même demande
 pendant qu'elle tourne. Montrer que la réponse renvoie **le même identifiant**
 avec `reuse: already_running`, et non une seconde mission. Puis tenter un sujet
-différent : 409, refus explicite. Dire honnêtement la limite : après la fin d'une
-mission, une demande identique crée une mission d'enrichissement.
+différent : 409, refus explicite. Après un succès récent sans erreur, la même
+demande est également réutilisée ; une actualisation forcée relance la recherche.
 
 **3:15 — La preuve chiffrée.** Lancer `pytest tests/test_api_robustesse.py -q`
 devant eux : 52 tests, moins d'une seconde, zéro appel réseau. Montrer le
