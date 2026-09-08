@@ -5,6 +5,7 @@ from app.agent.engine import Engine
 from app.agent.provider import AnthropicProvider, SCOPE_TOOLS
 from app.schemas import MissionInput
 from app.storage import Store, TERMINAL
+from app.agent.web import ToolFailure
 
 @pytest.mark.parametrize('decision', [
     ('refuse', {'code':'out_of_scope'}),
@@ -36,14 +37,14 @@ def test_no_tool_before_scope_acceptance(tmp_path, decision):
 
 @pytest.mark.parametrize('content', [[], [{'type':'text','text':'Non.'}],
     [{'type':'tool_use','name':'accept_scope','input':{}}]*2])
-def test_ambiguous_model_output_refused(content):
+def test_invalid_model_output_is_technical_failure(content):
     class Fake(AnthropicProvider):
         async def message(self, messages, system, tools):
             assert tools == SCOPE_TOOLS
             assert {t['name'] for t in tools} == {'accept_scope','refuse'}
             return {'content':content}
-    action, args, _ = asyncio.run(Fake('fake','fake').decide({'scope_approved':False}))
-    assert (action,args)==('refuse',{'code':'clarification_required'})
+    with pytest.raises(ToolFailure, match='anthropic_invalid_response'):
+        asyncio.run(Fake('fake','fake').decide({'scope_approved':False}))
 
 
 def test_refusal_reaches_authenticated_stream(tmp_path):

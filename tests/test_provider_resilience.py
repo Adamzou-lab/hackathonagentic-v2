@@ -217,3 +217,45 @@ def test_malformed_tool_result_is_never_empty_success(monkeypatch, content):
     with pytest.raises(ToolFailure):
         asyncio.run(AnthropicProvider('fixture-key','fixture-model').search('subject',2,['example.com']))
     assert len(calls) == 1
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_decision_requests_exactly_one_model_chosen_tool(monkeypatch, streaming):
+    calls = mock_transport(monkeypatch, lambda request:
+        streaming_response(tool()) if streaming else httpx.Response(200, json=response([tool()])))
+    provider = AnthropicProvider('fixture-key', 'fixture-model')
+    if streaming:
+        from app.stream import Broker
+        provider.broker = Broker()
+    action, args, _ = asyncio.run(provider.decide({'scope_approved':False}))
+    assert (action, args) == ('accept_scope', {})
+    payload = json.loads(calls[0].content)
+    assert payload['tool_choice'] == {'type':'any', 'disable_parallel_tool_use':True}
+    assert {t['name'] for t in payload['tools']} == {'accept_scope','refuse'}
+
+
+def test_native_search_keeps_its_own_tool_protocol(monkeypatch):
+    calls = mock_transport(monkeypatch, lambda request: httpx.Response(200, json=response([
+        {'type':'web_search_tool_result','content':[]}], 'end_turn')))
+    asyncio.run(AnthropicProvider('fixture-key','fixture-model').search('agents IA', 1, ['example.com']))
+    assert 'tool_choice' not in json.loads(calls[0].content)
+
+
+def test_text_after_scope_acceptance_is_not_a_user_refusal(tmp_path):
+    class TextAfterScope(AnthropicProvider):
+        async def message(self, messages, system, tools):
+            context = json.loads(messages[0]['content'])
+            return response([{'type':'text','text':'Voici ma recherche'}], 'end_turn') if context['scope_approved'] else response([tool()])
+    async def scenario():
+        store = Store(str(tmp_path/'text.db'))
+        try:
+            mid = store.create(MissionInput(subject='Les nouveautés des outils et frameworks d’agents IA', domains=['example.com']))
+            await Engine(store, TextAfterScope('fixture-key','fixture-model')).run(mid)
+            state = store.snapshot(mid)
+            assert state['status'] == 'failed'
+            assert state['error'] == 'anthropic_invalid_response'
+            assert state['actions_used'] == 0
+            assert any(e['kind'] == 'scope_accepted' for e in state['events'])
+            assert not any(e['kind'] == 'mission_refused' for e in state['events'])
+        finally:
+            store.db.close()
+    asyncio.run(scenario())

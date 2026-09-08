@@ -58,6 +58,10 @@ SCOPE_TOOLS = [dict(name='accept_scope', description='Demande de veille document
     input_schema={'type':'object', 'properties':{}, 'additionalProperties':False}), REFUSAL_TOOL]
 
 SYSTEM = '''Tu es Lockin, un agent de veille. Choisis une seule action à la fois. Si la demande sort du périmètre de veille documentaire ou exige une action interdite, utilise refuse.
+Le sujet documentaire a déjà été accepté à l'étape de contrôle du périmètre.
+Un intitulé général de veille suffit : utilise les limites et la période fournies,
+sans exiger que l'utilisateur précise des produits, une audience ou des critères.
+L'absence de nouveautés vérifiables est un résultat vide (finish), pas un sujet ambigu.
 Pour une nouvelle veille, cherche les nouveautés dans les sept jours précédant la date
 de démarrage fournie.
 Lors d'une actualisation, update_since indique la dernière mise à jour et known_findings
@@ -119,6 +123,14 @@ TOOLS.append(dict(name='finish', description='Signaler que la recherche utile es
 TOOLS.append(REFUSAL_TOOL)
 
 class AnthropicProvider:
+    @staticmethod
+    def decision_options(tools):
+        # Les outils internes exigent exactement une décision. Les recherches
+        # natives côté fournisseur gardent leur protocole propre.
+        if tools and all('input_schema' in tool for tool in tools):
+            return {'tool_choice': {'type':'any', 'disable_parallel_tool_use':True}}
+        return {}
+
     def __init__(self, key, model, broker=None):
         self.key, self.model = key, model
         # Bus de fragments provisoires. Absent en test : le fournisseur
@@ -147,7 +159,7 @@ class AnthropicProvider:
             response = await client.post('https://api.anthropic.com/v1/messages',
                 headers={'x-api-key': self.key, 'anthropic-version':'2023-06-01'},
                 json={'model':self.model, 'max_tokens':2048, 'system':system,
-                      'messages':messages, 'tools':tools})
+                      'messages':messages, 'tools':tools, **self.decision_options(tools)})
             if response.status_code != 200:
                 raise ToolFailure(f'anthropic_http_{response.status_code}')
             return response.json()
@@ -167,7 +179,8 @@ class AnthropicProvider:
             async with client.stream('POST', 'https://api.anthropic.com/v1/messages',
                 headers={'x-api-key': self.key, 'anthropic-version':'2023-06-01'},
                 json={'model':self.model, 'max_tokens':2048, 'system':system,
-                      'messages':messages, 'tools':tools, 'stream':True}) as response:
+                      'messages':messages, 'tools':tools, 'stream':True,
+                      **self.decision_options(tools)}) as response:
                 if response.status_code != 200:
                     raise ToolFailure(f'anthropic_http_{response.status_code}')
                 async for line in response.aiter_lines():
@@ -250,7 +263,9 @@ class AnthropicProvider:
             # Une panne de réponse n'est pas une ambiguïté de la demande.
             raise ToolFailure('anthropic_invalid_response')
         if len(calls) != 1:
-            return 'refuse', {'code':'clarification_required'}, result.get('usage', {})
+            raise ToolFailure('anthropic_invalid_response')
+        if calls[0].get('name') not in {tool['name'] for tool in available_tools}:
+            raise ToolFailure('anthropic_invalid_response')
         # Only the first proposal can be executed; no parallel tool calls.
         return calls[0]['name'], calls[0].get('input', {}), result.get('usage', {})
 
