@@ -98,7 +98,32 @@ http://localhost:8000/health doit répondre `{"status":"ok","service":"Lockin"}`
 
 Tests backend sans appels Anthropic après installation : `.venv/bin/python -m pytest -q` ; sous Windows : `.venv\Scripts\python.exe -m pytest -q`.
 
-## Documents du projet
+## Bonus palier 4 : dix scénarios, un score
+
+Après installation, lancer `.venv\Scripts\python.exe eval_palier4.py` sous Windows,
+ou `.venv/bin/python eval_palier4.py` sous macOS/Linux. Aucune clé API ni serveur
+à démarrer : le script rejoue dix scénarios, affiche un score sur 100 et conserve
+les journaux horodatés dans un nouveau dossier `data/evals/palier4-*`.
+Un scénario en échec fait baisser le score et la commande retourne un code non nul.
+Le moteur, l'API d'arrêt et SQLite sont réels ; les décisions du modèle et les
+réponses réseau sont contrôlées. Voir [EVAL_PALIER4.md](EVAL_PALIER4.md) pour les
+preuves, les limites et la préparation du checkpoint réel.
+
+## Bonus palier 5 : coût affiché
+
+L'écran de suivi affiche le coût estimé de la dernière requête Anthropic terminée,
+avec ses jetons d'entrée/sortie et le nombre de recherches web facturées. Le calcul
+reste côté serveur et utilise les métriques retournées par Anthropic. Les tarifs
+publics configurés pour Haiku 4.5 sont de 1 USD/Mjeton en entrée, 5 USD/Mjeton en
+sortie, 1,25 USD/Mjeton écrit en cache, 0,10 USD/Mjeton lu depuis le cache et
+0,01 USD par recherche web. L'interface marque le montant comme une estimation ;
+si le tarif du modèle est inconnu, elle affiche « Indisponible » au lieu d'inventer.
+
+Le mode démo montre également cette carte avec des valeurs explicitement simulées.
+Les tests vérifient le calcul, le cas d'un modèle inconnu, la persistance dans
+l'instantané API et la présence de l'élément dans l'interface. Voir [PALIER5.md](PALIER5.md).
+
+## Documents de référence
 
 - [SPEC.md](SPEC.md) : problème, user stories et hors scope.
 - [MENACES.md](MENACES.md) : modèle de menace.
