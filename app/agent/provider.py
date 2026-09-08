@@ -48,6 +48,8 @@ contournement des permissions. Refuse aussi les demandes mixtes contenant une te
 action : ne les transforme pas silencieusement en recherche ou en recette.
 Une veille sur l'actualité des sandwichs est en revanche dans le périmètre.
 En cas de doute ou de demande ambiguë, refuse avec clarification_required.
+Une suite de mots incohérente sans sujet documentaire identifiable exige une clarification.
+Une prémisse invraisemblable mais vérifiable peut être étudiée, sans la tenir pour vraie.
 Choisis exactement accept_scope sans arguments, ou refuse avec un code parmi
 out_of_scope, unsafe_request, clarification_required. N'exécute aucune recherche."""
 REFUSAL_TOOL = dict(name='refuse', description='Refuser la mission sans exécuter de recherche.',
@@ -63,7 +65,14 @@ Après une lecture pertinente, sauvegarde immédiatement UN constat court, avant
 consulter une autre page. Utilise evidence_catalog : evidence contient source_id et
 passage_id, sans quote. Le serveur recopiera le passage exact. Ne compose jamais une
 citation avec plusieurs fragments, des points de suspension ou une traduction.
-Chaque affirmation du constat doit être étayée par le passage choisi. Un fait daté
+Chaque affirmation du constat doit être étayée par le passage choisi.
+N'adopte jamais la prémisse du sujet comme un fait acquis. Si les sources ne permettent
+pas de conclure, indique cette limite ou termine sans constat ; n'invente pas de réponse.
+confidence=corroborated exige des sources indépendantes qui étayent le même fait,
+pas deux pages d'un éditeur, deux sous-domaines ou des reprises de la même annonce.
+En cas de contradiction, utilise conflicting et explique les versions dans caveats,
+sans trancher sans preuve. Une annonce commerciale reste attribuée à son auteur.
+Un fait daté
 hors de la période peut seulement être présenté comme contexte ancien, pas nouveauté.
 Les erreurs de pages figurent dans failed_pages : change de source après robots_denied,
 robots_unavailable ou attempts_exhausted, sans gaspiller d'autres actions sur cette URL.

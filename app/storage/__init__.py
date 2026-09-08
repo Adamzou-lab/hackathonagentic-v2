@@ -4,6 +4,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from app.storage.usage import usage_summary
 from app.storage.watches import WatchStore, watch_identity
 from app.storage.incidents import GuardedConnection, IncidentLog, StorageUnavailable, mission_context, json_guard
 
@@ -200,6 +201,7 @@ class Store(WatchStore):
         public.update(duration_seconds=duration, elapsed_seconds=elapsed,
                       remaining_seconds=max(0, duration-elapsed),
                       actions_remaining=max(0, data['action_budget']-data['actions_used']), events=self.events(mid))
+        public['usage'] = usage_summary(data, public['events'], elapsed)
         text = '\n\n'.join(f"{f['title']}\n{f['summary']}\nIntérêt pratique : {f['developer_impact']}" for f in data['findings'])
         empty = 'Aucun constat validé pour le moment.'
         if data['status'] == 'budget_exhausted':

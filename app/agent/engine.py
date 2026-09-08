@@ -4,6 +4,7 @@ import json
 import inspect
 import time
 import uuid
+from urllib.parse import urlsplit
 import aiohttp
 from datetime import datetime, timedelta
 from pydantic import ValidationError
@@ -200,8 +201,15 @@ class Engine:
                 finding['date_status'] = 'in_window' if start <= day <= end else 'outside_window'
             except ValueError:
                 finding.update(event_date=None, date_status='unknown')
-        if len({e['source_id'] for e in finding['evidence']}) < 2:
+        hosts = {(urlsplit(d['pages'][e['source_id']]['url']).hostname or '').lower().removeprefix('www.')
+                 for e in finding['evidence']}
+        quotes = {' '.join(e['quote'].split()).casefold() for e in finding['evidence']}
+        # Different URLs do not establish independent corroboration. Preserve a
+        # reported disagreement even when it comes from a single publisher.
+        if finding['confidence'] == 'corroborated' and (len(hosts) < 2 or len(quotes) < 2):
             finding['confidence'] = 'single_source'
+            note = 'Les références ne démontrent pas une corroboration indépendante.'
+            finding['caveats'] = [note] + [c for c in finding['caveats'] if c != note][:4]
         prior = self.store.watch(d['watch_id'])['findings'] if d.get('watch_id') else []
         known = {f['entry_id']:f for f in prior if f['mission_id'] != mid}
         change, related = args.change, args.related_finding_id

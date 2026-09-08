@@ -127,7 +127,11 @@ async def s01_mission_nominale(store):
     etat = store.snapshot(mid)
     constats = etat['findings']
     ok = (etat['status'] == 'completed' and len(constats) == 1
-          and constats[0]['confidence'] == 'corroborated' and not etat['summary']['partial'])
+          # Deux pages du même domaine avec la même citation ne prouvent pas
+          # une corroboration indépendante : le serveur doit réduire l'assurance.
+          and constats[0]['confidence'] == 'single_source'
+          and any('corroboration indépendante' in c for c in constats[0]['caveats'])
+          and not etat['summary']['partial'])
     return ok, f"statut={etat['status']} constats={len(constats)} partielle={etat['summary']['partial']}"
 
 
