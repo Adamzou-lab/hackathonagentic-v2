@@ -6,6 +6,43 @@
   const demo = new URLSearchParams(location.search).has("demo");
   const demoApi = demo ? window.createLockinDemo() : null;
   const journalNodes = new Map();
+  // Incidents constates par le navigateur. Volontairement separes des
+  // evenements du serveur : ils n'ont pas de seq, ils ne font pas foi, et
+  // leur horodatage est une heure de detection, pas une heure de panne.
+  const incidents = [];
+  let connecte = true;
+  function majSituation() {
+    const vue = window.LockinJournal.situation(
+      mission ? mission.status : null,
+      connecte,
+    );
+    const noeud = q("#lk-situation");
+    if (!noeud) return;
+    noeud.dataset.severity = vue.severity;
+    noeud.dataset.source = vue.source;
+    noeud.replaceChildren(el("strong", "", vue.label), el("span", "", vue.detail));
+    noeud.hidden = vue.key === "running";
+  }
+  function signaler(kind, detail) {
+    const J = window.LockinJournal;
+    const item = J.incident(kind, detail);
+    incidents.push(item);
+    const ligne = el("div", "lk-logrow lk-incident");
+    ligne.dataset.kind = "client_" + kind;
+    const horloge = el("time", "lk-stamp");
+    horloge.dateTime = item.detected_at;
+    horloge.append(
+      el("span", "lk-elapsed", "navigateur"),
+      el("span", "lk-abs", J.stamp(item.detected_at).absolute),
+    );
+    const corps = el("div", "lk-logbody");
+    corps.append(el("p", "", item.detail || kind));
+    corps.append(el("p", "lk-incident-note", item.note));
+    ligne.append(horloge, el("strong", "", "Incident de connexion"), corps);
+    q("#lk-events").prepend(ligne);
+    majSituation();
+    return item;
+  }
   const terminal = new Set([
     "refused",
     "stopped",
@@ -346,7 +383,11 @@
       );
     if (d.proposed_action) return tools[d.proposed_action] || d.proposed_action;
     if (d.url) return d.url;
-    if (d.status) return names[d.status] || d.status;
+    if (d.status)
+      return (
+        (names[d.status] || d.status) +
+        (d.error ? " · " + d.error : "")
+      );
     if (d.request) return d.request.subject;
     if (d.source_id) return "Source " + d.source_id.slice(0, 8);
     if (d.domains) return d.domains.join(", ");
@@ -370,12 +411,19 @@
         : /^(tool_disabled|blocked_|invalid_|unknown_tool)/.test(code || "")
           ? "Appel refusé"
           : "Échec d’outil";
+    const J = window.LockinJournal;
+    const marque = J.stamp(event.at);
+    const ecoule = J.elapsed(event.at, state.created_at);
+    const horloge = el("time", "lk-stamp");
+    horloge.dateTime = marque.iso;
+    // Le temps ecoule reste en tete, l'horodatage absolu le complete sans le
+    // remplacer : l'un sert a suivre le rythme, l'autre a dater une panne.
+    horloge.append(
+      el("span", "lk-elapsed", ecoule === null ? "--" : time(ecoule)),
+      el("span", "lk-abs", marque.absolute),
+    );
     row.append(
-      el(
-        "time",
-        "",
-        time((new Date(event.at) - new Date(state.created_at)) / 1000),
-      ),
+      horloge,
       el(
         "strong",
         "",
@@ -385,6 +433,16 @@
     const body = el("div", "lk-logbody");
     body.append(el("p", "", eventText(event)));
     const d = event.data || {};
+    const panne = J.diagnose(J.failureCode(event));
+    if (panne) {
+      const bloc = el("dl", "lk-diag" + (panne.known ? "" : " lk-diag-inconnu"));
+      bloc.append(
+        el("dt", "", "Dependance concernee"), el("dd", "", panne.dependency),
+        el("dt", "", "Cause"), el("dd", "", panne.cause),
+        el("dt", "", "Reaction de l'agent"), el("dd", "", panne.reaction),
+      );
+      body.append(bloc);
+    }
     if (d.parameters !== undefined || d.result !== undefined) {
       const details = el("details", "");
       details.open = true;
@@ -418,6 +476,7 @@
     q("#lk-nav").disabled = !done;
     q("#lk-nav").textContent = done ? "Nouvelle veille" : "Mission en cours";
     q("#lk-status").textContent = names[state.status] || state.status;
+    majSituation();
     q("#lk-missiontitle").textContent = state.subject;
     q("#lk-missionsub").textContent =
       (state.update_since
@@ -645,7 +704,10 @@
       q("#lk-connection").textContent =
         "Flux connecté · Événements reçus en direct";
       q("#lk-reconnect").hidden = true;
+      if (!connecte) signaler("flux_retabli", "Le flux a été rétabli.");
       failures = 0;
+      connecte = true;
+      majSituation();
       notice("");
       await window.readLockinStream(
         response,
@@ -707,6 +769,12 @@
       );
       q("#lk-connection").textContent =
         "Flux déconnecté · Dernières données conservées";
+      connecte = false;
+      signaler(
+        "flux_interrompu",
+        "Le flux d'évènements s'est interrompu. L'agent peut continuer à " +
+          "travailler sans que cet écran le voie.",
+      );
       q("#lk-reconnect").hidden = false;
       timer = setTimeout(
         () => follow(id, version),
@@ -723,7 +791,9 @@
     try {
       const state = await api("missions/" + encodeURIComponent(id));
       if (version !== generation) return;
+      if (!connecte) signaler("suivi_retabli", "Le suivi a été rétabli.");
       failures = 0;
+      connecte = true;
       notice("");
       q("#lk-reconnect").hidden = true;
       render(state);
@@ -741,6 +811,11 @@
       );
       q("#lk-connection").textContent =
         "Suivi interrompu · État de la mission à confirmer";
+      connecte = false;
+      signaler(
+        "actualisation_impossible",
+        "L'actualisation périodique a échoué : " + error.message,
+      );
       q("#lk-reconnect").hidden = false;
       if (error.status === 401 || error.status === 404) return;
     }
@@ -1266,12 +1341,9 @@
     const blob = new Blob(
       [
         JSON.stringify(
-          {
-            mission_id: mission.id,
-            subject: mission.subject,
+          window.LockinJournal.buildExport(mission, incidents, {
             simulated: demo,
-            events: mission.events,
-          },
+          }),
           null,
           2,
         ),

@@ -1023,3 +1023,70 @@ body {
     gap: 12px;
   }
 }
+
+/* Palier 4 : horodatage complet, diagnostic de panne, incidents navigateur.
+   Reprend les variables et le rythme visuel existants, sans nouvelle palette. */
+.lk-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  line-height: 1.25;
+}
+.lk-stamp .lk-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+.lk-stamp .lk-abs {
+  font-size: 0.72rem;
+  opacity: 0.62;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lk-diag {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 2px solid currentColor;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+.lk-diag dt {
+  opacity: 0.6;
+  white-space: nowrap;
+}
+.lk-diag dd {
+  margin: 0;
+}
+.lk-diag-inconnu {
+  border-left-style: dashed;
+}
+/* Un incident vient du navigateur : il est marque autrement qu'une ligne
+   de journal, pour qu'on ne le lise jamais comme une preuve du serveur. */
+.lk-incident {
+  border-left: 2px dashed currentColor;
+  opacity: 0.95;
+}
+.lk-incident-note {
+  font-size: 0.76rem;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
+.lk-situation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid currentColor;
+  font-size: 0.86rem;
+}
+.lk-situation strong {
+  font-weight: 600;
+}
+.lk-situation[data-severity="warn"] {
+  opacity: 0.95;
+}
+.lk-situation[data-severity="error"] {
+  opacity: 1;
+}
