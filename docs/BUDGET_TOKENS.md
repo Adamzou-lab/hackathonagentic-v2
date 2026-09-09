@@ -1,4 +1,10 @@
-# Consommation et progression
+# Consommation et progression — historique
+
+**Attention livraison v1.0 :** les optimisations décrites ci-dessous étaient
+présentes dans 7fc0988. La PR #17 réintégrée depuis dev a retiré le contrôle du
+seuil de tokens, le contexte réduit du moteur et les améliorations du streaming.
+Ce document décrit donc un état antérieur, pas une garantie de la version livrée.
+Voir JOURNAL.md pour la dette assumée.
 
 Les nouvelles missions ont un seuil de tokens : 16 000 jusqu'à 10 actions,
 24 000 jusqu'à 20 actions, 40 000 au-delà. Le moteur vérifie les consommations

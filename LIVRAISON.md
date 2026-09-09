@@ -3,34 +3,26 @@
 État vérifié le 9 septembre 2026. Ce document prépare la livraison ; il ne vaut
 ni preuve d'une répétition réalisée ni déclaration de gel définitif.
 
-## Version candidate
+## Version retenue
 
-- Code actuellement sur main : `7fc0988723dba098f490fc1159bfa5fce42ec3e2`.
-- Netlify : même commit dans `https://lockin-demo.netlify.app/version.json`.
-- Backend : `/opt/lockin/releases/7fc0988`, service actif, santé publique `ok`.
-- API configurée et activée ; accès public volontaire pendant la démonstration.
-- Tag `v1.0` absent lors de la vérification.
-- `JOURNAL.md` absent du commit candidat ; rédaction confiée à Claude.
+Adam a demandé de livrer tout dev, y compris la PR #17, avec le journal de Claude
+et les présents documents. Le code de base intégré est
+`63456246f6fb89f808a538c831d7dd5fdd809ab9`. Le commit final inclut les documents :
+son identifiant sera celui du tag v1.0, à vérifier avec `git rev-parse v1.0^{commit}`.
 
-Attention : dev est à `63456246f6fb89f808a538c831d7dd5fdd809ab9` après la PR #17.
-Cette intégration ajoute un coût estimé en dollars mais retire le contrôle du
-seuil de tokens, agrandit à nouveau le contexte et retire les améliorations du
-streaming. Vérification isolée : 342 tests Python réussis, 4 échoués sur le seuil
-de tokens. Ne pas fusionner dev aveuglément dans la version candidate.
-Le code en ligne n'a pas été changé pendant cette préparation.
+La PR #17 ajoute un coût estimé en dollars mais retire le seuil de tokens,
+agrandit le contexte et retire les dernières améliorations du streaming.
+Audit : 342 tests Python réussis, quatre échecs sur le seuil de tokens. Ce résultat
+est assumé dans JOURNAL.md ; aucun correctif applicatif n'est ajouté pendant le gel.
 
-## Avant de poser v1.0
+## Procédure de gel
 
-1. Adam confirme la version candidate. Si le choix est la version actuelle de
-   main, intégrer uniquement les documents de livraison, sans le code de la PR #17.
-2. Relire JOURNAL.md : cinq entrées factuelles minimum ; statut du secret confirmé
-   par Adam ; paragraphe de chasse ouverte si nécessaire, sans divulguer le secret.
-3. Vérifier que la dette technique assumée indique un choix, sa raison et sa limite.
-4. Publier les documents et déployer le commit final, puis vérifier l'alignement.
-5. Poser le tag annoté v1.0 sur ce SHA exact et le pousser. Ne jamais déplacer ce tag.
-6. Répéter sur cette version, arrêt strict à cinq minutes, puis lire tout le journal.
-   Garder la preuve de répétition séparément du dépôt gelé pour ne pas avancer le
-   commit jugé. Aucun changement de code après le gel.
+1. Paragraphe chasse ouverte finalisé : aucun flag communiqué à Adam au moment du gel ; modalités à demander à l’examinateur.
+2. Pousser la même version documentaire finale dans dev puis main.
+3. Déployer ce commit sur Netlify et le backend ; vérifier santé et version.
+4. Poser et pousser le tag annoté v1.0 sur ce SHA exact, sans le déplacer ensuite.
+5. Répéter sur cette version, arrêt strict à cinq minutes, puis lire tout le journal.
+   Garder la preuve séparément du dépôt gelé. Aucun changement de code après le gel.
 
 ## Répétition réelle — déroulé de cinq minutes
 
@@ -43,7 +35,7 @@ crédit ; la réutilisation d'un résultat ne démontre pas un nouvel appel au m
 | --- | --- |
 | 0:00–0:25 | Présenter Lockin : veille documentaire publique, sources, limites, journal. Montrer le tag et le SHA notés avant le départ. |
 | 0:25–1:40 | Lancer une veille Rapide avec une durée d'une minute, sujet fourni sur place. Si elle est réutilisée, annoncer le cache ; utiliser une actualisation explicite pour montrer une exécution réelle. Montrer l'outil proposé puis ses arguments et le résultat dans le journal. |
-| 1:40–2:30 | Ouvrir les constats et leurs extraits. Expliquer date inconnue, source unique ou absence de constat sans inventer un succès. Montrer tokens, appels et durée ; le seuil est vérifié entre les appels, pas un plafond exact de facturation. |
+| 1:40–2:30 | Ouvrir les constats et leurs extraits. Expliquer date inconnue, source unique ou absence de constat sans inventer un succès. Montrer tokens, appels et durée ; aucun seuil de tokens n’est appliqué dans cette version ; le prix est une estimation. |
 | 2:30–3:20 | Si la mission tourne encore, demander son arrêt et attendre l'état terminal. Désactiver l'API avec le bouton, tenter une recherche : montrer le refus explicite sans nouvel appel payant. Réactiver ensuite. |
 | 3:20–4:15 | Lancer `python eval.py` dans l'environnement installé. Montrer le score et nommer la limite : doubles déterministes, pas une preuve que Haiku ne se trompe jamais. |
 | 4:15–4:50 | Montrer Mes veilles, un journal horodaté et une limite assumée : une citation exacte ne garantit pas une interprétation correcte. |

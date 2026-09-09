@@ -1,122 +1,99 @@
-# JOURNAL — travailler avec l'IA sur Lockin
+# JOURNAL — Livraison de Lockin
 
-Sept entrées tirées des 66 commits et de mesures réellement faites. Chaque essai
-est marqué **simulé** (fournisseur factice, aucun coût) ou **réel** (appel Haiku
-4.5 effectivement passé). Rien n'est raconté qui n'ait été observé.
+Ce journal distingue les tests automatisés avec fournisseur factice des appels
+réellement passés à Haiku. Il ne promet pas un agent infaillible.
 
----
+## 1. Rendre les actions vérifiables
 
-**1. Lundi 07/09 — Deux IA qui se relisent trouvent ce qu'une seule ne voit pas.**
-Claude et Codex ont travaillé en parallèle, chacun sur ses fichiers, avec relecture
-croisée obligatoire. Codex a trouvé quatre erreurs chez Claude. La pire :
-l'exclusion « aucun appel sortant vers un service tiers », qui contredisait
-frontalement une mission de veille web. Une autre : affirmer que le balisage du
-contenu non fiable protège de l'injection, alors qu'il réduit le risque sans
-garantir l'obéissance du modèle. *Résultat* : la frontière est désormais entre lire
-et écrire, et les contrôles serveur sont la protection décisive, le balisage
-seulement en second. *Limite* : cette relecture coûte du temps, et n'a été possible
-que parce que les périmètres étaient attribués nommément dès le départ.
+Nous avons séparé le choix du modèle de l’exécution des outils. Le serveur valide
+les arguments, les domaines et les limites. Le journal conserve l’outil, ses
+arguments acceptés, son résultat ou son erreur. Les tests simulés vérifient
+notamment qu’une recherche sans résultat réel ne devient pas un faux succès.
+La décision du modèle n’est pas remplacée par une détection de mots-clés.
 
-**2. Lundi 07/09 — Une affirmation de sécurité non vérifiée est un mensonge.**
-`compose.yaml` publiait `"8000:8000"` pendant que `MENACES.md` affirmait une écoute
-locale seulement. Faux : Docker publie sur toutes les interfaces, donc sur le
-réseau du hackathon. Sorti par `docker compose config`, pas par relecture — le
-fichier se lisait très bien. *Résultat* : `127.0.0.1:8000:8000`, vérifié dans la
-sortie. Ce qu'un document de menaces affirme doit être prouvé par une commande.
+## 2. Refuser les preuves inventées
 
-**3. Lundi 07/09 — Le placeholder qui passait la validation.** Le jeton d'exemple
-faisait 47 caractères, le minimum exigé est 32 : `cp .env.example .env` puis
-démarrage donnait une application **qui fonctionne**, avec un jeton lisible par
-quiconque ouvre le dépôt. *Résultat* : valeur volontairement trop courte, refus au
-démarrage avec message explicite. Échouer bruyamment plutôt qu'en silence.
-*Vérifié* (simulé) sur clone neuf : 503 explicite sans secrets, démarrage complet
-avec.
+Les citations doivent correspondre à une page effectivement lue. Des tests
+simulés ont tenté de sauvegarder des citations absentes et des identifiants de
+passage inconnus : ils ont été rejetés, sans constat enregistré. Les identifiants
+fournis par le serveur permettent de recopier un passage exact. Limite assumée :
+un extrait exact ne garantit pas que le résumé en respecte le sens.
 
-**4. Lundi 07/09 — Essai réel : onze sources lues, zéro constat.** **Essai réel
-Haiku 4.5**, budget 18 actions. Observé : 11 sources lues, arrêt propre, **aucun
-constat**. En démonstration, un écran vide. Le journal a donné la cause : le prompt
-se contredisait — sauvegarder immédiatement, puis réserver les dernières actions à
-la sauvegarde — et le modèle a suivi la seconde consigne ; sa tentative unique a
-échoué parce que la citation devait être une sous-chaîne exacte de la page.
-*Résultat* : contradiction supprimée, citations ancrées par identifiant fourni par
-le serveur. Aucun test simulé n'aurait révélé ce biais : c'est la dépense la mieux
-employée de la semaine.
+## 3. Montrer les pannes et l’arrêt
 
-**5. Mardi 08/09 — Diffuser la progression sans diffuser du provisoire.** Le flux
-distingue le **journal** persisté, numéroté, qui fait foi et se rejoue après
-coupure, et le **brouillon**, fragment du fournisseur, sans numéro, jamais rejoué,
-jamais exécuté. Trois garde-fous vérifiés en **simulé** : arguments assemblés
-seulement une fois le bloc clos, JSON tronqué neutralisé au lieu d'être exécuté,
-raisonnement interne ignoré à la source. *Limite* : la recherche web n'est pas
-diffusée au fil de l'eau, son résultat arrive d'un bloc.
+Nous avons testé, avec des doubles, les pages indisponibles, les délais dépassés,
+l’arrêt et les missions interrompues par un processus. Le travail déjà validé est
+conservé. Au redémarrage, une mission inachevée est marquée en échec ; elle ne
+repart pas seule. L’heure d’une détection est distinguée de l’heure réelle d’une
+coupure lorsqu’elle est inconnue.
 
-**6. Mardi 08/09 — Ne pas confondre « l'agent est arrêté » et « je ne le vois
-plus ».** Quatre situations distinctes : arrêt demandé, arrêt confirmé, échec —
-tous trois venant du serveur — et connexion perdue, qui vient du navigateur et ne
-dit rien de l'agent. Une connexion perdue **prime sur le dernier statut connu**, et
-le message dit que l'agent n'est pas arrêté pour autant. Les incidents sont
-horodatés à la **détection**, avec la mention que l'heure réelle d'une coupure
-serveur est inconnue, et exportés à part du journal. *Vérifié* (simulé) : 16
-contrôles, plus un rendu en navigateur réel sans erreur console.
+## 4. Distinguer progression et résultat validé
 
-**7. Mardi 08/09 — Cinquante-deux essais de robustesse, aucune correction
-nécessaire.** **Simulé**, fournisseur comptant ses sollicitations : entrées vides,
-blanches, trop longues, mal typées, hors bornes, domaines interdits, identifiants
-inexistants, doubles soumissions, API coupée. Chaque refus produit un message
-explicite et le compteur reste à **zéro**. `app/main.py` livré **inchangé** : c'est
-un résultat, pas une omission. Il aurait été facile de fabriquer une correction
-pour avoir quelque chose à montrer.
+Le streaming sépare les fragments provisoires du modèle du journal persistant.
+Les arguments ne sont exécutés qu’après réception et validation complète. Les
+tests simulés rejettent les réponses tronquées et les JSON incomplets. Une perte
+de connexion du navigateur ne signifie pas que l’agent est arrêté. La recherche
+web native ne diffuse pas elle-même ses résultats fragment par fragment.
 
-**Ce que les CTF ont confirmé.** Lundi : *un secret côté client n'est pas un
-secret*. Mardi : le flag dormait dans un blob Git qu'un commit intitulé « security :
-la clé ne doit jamais être en dur » prétendait avoir retiré — *rien ne s'efface*.
-Les deux leçons étaient déjà écrites dans `MENACES.md` avant les épreuves.
-*La chasse ouverte n'est pas traitée ici, par décision de l'équipe.*
+## 5. Vérifier les entrées sans payer le fournisseur
 
----
+Claude a ajouté 52 tests HTTP : sujets vides, types incorrects, paramètres hors
+bornes, domaines interdits, identifiants inconnus, doublons et API désactivée.
+Avant intégration, Codex a remplacé une assertion toujours vraie par une vraie
+vérification de l’absence de missions. Le fournisseur factice a aussi été corrigé
+pour accepter le périmètre avant de terminer. Une veille récente réussie peut être
+réutilisée sans nouvel appel ; une actualisation explicite relance la recherche.
+
+## 6. Éprouver le vrai modèle
+
+Le 8 septembre, deux décisions courtes ont été demandées au vrai Haiku 4.5.
+Une consigne d’inventer des annonces avec de fausses citations a donné un refus
+`unsafe_request`. Un contexte de recherche sans preuve pour un framework fictif
+a donné `clarification_required`, sans constat fabriqué. Ces deux essais ont
+consommé 3 622 tokens au total. Ils testent des décisions du modèle, pas une veille
+complète en conditions réelles, et ne prouvent pas l’absence universelle
+d’hallucinations.
+
+## 7. Mesurer et assumer la version livrée
+
+Les tokens, appels et durées sont visibles ; Panaki a ajouté une estimation en
+USD. La fusion de son travail dans dev a retiré le seuil d’arrêt en tokens et
+rétabli un contexte plus volumineux ainsi que l’ancien affichage du streaming.
+Le 9 septembre, l’audit de cette version a donné **342 tests Python réussis et
+4 échecs**, tous liés au seuil de tokens supprimé. Les tests frontend ont passé.
+Adam a choisi de livrer tout dev. Le gel conserve donc cette limite connue,
+sans prétendre que le seuil de 16 000 tokens protège la version finale.
+Les limites d’actions et de durée restent présentes.
+
+## Chasse ouverte
+
+Au moment du gel, Adam indique qu’aucun secret ou flag d’épreuve ne lui a été
+communiqué. Il demandera les modalités à l’examinateur. Aucun résultat de chasse
+ouverte n’est donc revendiqué. La clé API réelle ne constitue pas un flag à
+divulguer. Toute information reçue après le gel sera consignée séparément, sans
+déplacer le tag v1.0.
 
 ## Dette technique assumée
 
-Quatre dettes, vérifiées dans le code avant d'être décrites.
+- **Validation du sens des constats.** Le contrôle d’extrait exact est simple,
+  vérifiable et peu coûteux, mais ne vérifie pas toute l’interprétation. Une
+  vérification supplémentaire des affirmations serait une amélioration ultérieure.
+- **Maîtrise des tokens.** Le gel de tout dev conserve la régression signalée,
+  afin de respecter le choix de version et l’arrêt des changements de code.
+  Conséquence : aucune limite de tokens appliquée malgré quatre tests qui
+  l’attendent. Le contexte plus grand peut augmenter la consommation. Réparer
+  cette régression nécessiterait une nouvelle version après le hackathon.
+- **Coût monétaire estimé.** Le tarif est configuré pour Haiku 4.5. Les rapports
+  absents, partiels ou interrompus ne permettent pas une facture exhaustive ;
+  le montant affiché ne doit pas être présenté comme une garantie de dépense.
+  Une réconciliation avec la facturation fournisseur serait nécessaire.
+- **Absence de reprise automatique.** Nous privilégions l’arrêt explicite à un
+  redémarrage risquant de répéter une action. Reprendre exige une stratégie
+  d’idempotence et de traitement des opérations dont l’issue est inconnue.
 
-**1. Les citations ne couvrent qu'une partie de chaque page.** Le serveur découpe
-une page en passages d'environ 450 caractères, **24 au maximum**, et n'en expose
-que **six, de la dernière page lue**. *Raison* : borner le contexte, une seule
-recherche web consommant déjà une part importante des 200 000 tokens de Haiku.
-*Conséquence* : un fait au-delà du vingt-quatrième passage n'est pas citable par
-identifiant ; le modèle doit retomber sur une citation brute validée par
-correspondance exacte, le mécanisme même qui avait produit zéro constat lundi.
-*Amélioration* : choisir les passages par pertinence au sujet plutôt que par ordre
-d'apparition.
+## Répétition et gel
 
-**2. Le seuil de tokens est un portail, pas un plafond.** 16 000, 24 000 ou 40 000
-selon le budget d'actions, vérifié **avant de lancer** un appel, jamais pendant.
-*Raison* : c'est le seul contrôle qui n'exige pas d'estimer à l'avance le coût d'un
-appel dont la recherche web ramène un contenu de taille inconnue. *Conséquence* :
-l'appel qui franchit le seuil est payé **en entier** ; le budget borne le nombre
-d'appels lancés, pas la dépense. *Amélioration* : compter les tokens de l'appel à
-venir et le refuser s'il ferait franchir le seuil.
-
-**3. La consommation mesurée peut sous-estimer la réelle.** Un rapport d'usage
-malformé est ignoré dans le total. *Raison* : ne jamais inventer un chiffre, un
-rapport illisible ne vaut pas zéro token. *Conséquence* : le portail ci-dessus
-laisse alors passer plus d'appels que prévu. Le code l'assume et expose un compteur
-`unmeasured_calls` distinct. *Amélioration* : compter un appel non mesuré à la
-moyenne observée plutôt qu'à zéro.
-
-**4. Une mission interrompue est close, pas reprise.** Au redémarrage, une mission
-non terminée est détectée puis **arrêtée** ; la reprise au point exact, annoncée
-comme bonus du sujet, n'est pas implémentée. *Raison* : la reprise supposerait de
-savoir quelle action était en vol, ce que le code ne sait pas — il l'écrit, le champ
-`interrupted_at` reste nul. *Conséquence* : le travail validé est conservé, la
-mission ne repart pas seule. *Amélioration* : rendre chaque action idempotente et
-rejouable, pour qu'une reprise ne compte pas deux fois la même dépense.
-
----
-
-**État de la répétition.** Elle **n'a pas encore eu lieu** au moment où ces lignes
-sont écrites. Le parcours de quatre minutes existe dans `PALIER5_TESTS.md` mais n'a
-pas été joué en conditions ; aucun chronométrage réel n'est revendiqué.
-
-**À la livraison** : 66 commits, 342 tests automatisés qui passent, aucun appel
-payant nécessaire pour les rejouer.
+La répétition chronométrée du palier 6 et la lecture intégrale à voix haute ne
+sont pas encore attestées. Le déroulé est dans LIVRAISON.md. La preuve de répétition
+sera conservée séparément du dépôt gelé. Le tag v1.0 doit pointer sur le commit
+final effectivement publié ; il ne doit pas être déplacé après le gel.
