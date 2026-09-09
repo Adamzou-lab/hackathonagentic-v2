@@ -1158,3 +1158,24 @@ body {
 #lockin-mock .lk-usage dd { margin: 8px 0 0; font-size: clamp(16px, 3vw, 26px); font-weight: 600; overflow-wrap: anywhere; }
 #lockin-mock .lk-usage p { margin: 18px 0 0; color: var(--lk-muted); font-size: 12px; line-height: 1.6; }
 @media (max-width: 480px) { #lockin-mock .lk-usage-metrics { grid-template-columns: 1fr; } }
+
+/* Progressive disclosure: the primary view stays focused on the research. */
+#lockin-mock .lk-settings, #lockin-mock .lk-technical {
+  border: 1px solid var(--lk-line); border-radius: 12px; padding: 16px 20px; margin: 18px 0;
+}
+#lockin-mock .lk-settings summary, #lockin-mock .lk-technical summary {
+  cursor: pointer; font-size: 13px; color: var(--lk-text); line-height: 1.6;
+}
+#lockin-mock details[open] > summary { margin-bottom: 20px; }
+#lockin-mock summary:focus-visible { outline: 2px solid var(--lk-accent); outline-offset: 5px; }
+#lockin-mock .lk-monitor { grid-template-columns: 1fr 2fr; }
+#lockin-mock .lk-results { grid-template-columns: minmax(0, 1fr); }
+#lockin-mock .lk-technical-meters { display: flex; flex-wrap: wrap; gap: 24px; margin: 16px 0; }
+#lockin-mock .lk-technical .lk-side { border: 0; padding: 16px 0 0; }
+#lockin-mock #lk-publiccost { font-size: 22px; font-weight: 500; color: var(--lk-accent); }
+#lockin-mock #lk-connection { font-size: 11px; }
+@media (max-width: 640px) {
+  #lockin-mock .lk-monitor { grid-template-columns: 1fr; }
+  #lockin-mock .lk-current { border-left: 0; border-top: 1px solid var(--lk-line); padding-top: 20px; }
+  #lockin-mock .lk-settings, #lockin-mock .lk-technical { padding: 14px; }
+}

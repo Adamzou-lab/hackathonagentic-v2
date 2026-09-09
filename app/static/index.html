@@ -24,8 +24,8 @@
           <span class="lk-symbol" aria-hidden="true"></span>lockin
         </div>
         <div class="lk-chrome">
-          <button class="lk-plain" id="lk-api-toggle" disabled>API · connexion requise</button>
-          <span class="lk-proto">HAIKU 4.5</span
+          <button class="lk-plain" id="lk-api-toggle" disabled>Vérification de la connexion…</button>
+          <span class="lk-proto" hidden>HAIKU 4.5</span
           ><button class="lk-plain" id="lk-library-nav">Mes veilles</button
           ><button class="lk-plain" id="lk-nav" hidden>Nouvelle veille</button
           >
@@ -39,7 +39,7 @@
         <div class="lk-intro">
           <span class="lk-eyebrow">Votre veille, sous contrôle</span>
           <h1>Un sujet. Des sources.<br />On s’occupe de la suite.</h1>
-          <p>Une veille autonome, avec des limites que vous choisissez.</p>
+          <p>Les informations utiles sur votre sujet, réunies dans une synthèse sourcée.</p>
         </div>
         <form class="lk-form" id="lk-form">
           <label for="lk-topic">Que souhaitez-vous explorer ?</label
@@ -48,11 +48,49 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           >
           <div class="lk-divider"></div>
           <div class="lk-fieldhead">
+            <label id="lk-packslabel">Quel niveau de détail ?</label
+            ><span id="lk-packstate" aria-live="polite">Rapide</span>
+          </div>
+          <div class="lk-packs" role="group" aria-labelledby="lk-packslabel">
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="10"
+              data-duration="5"
+              data-name="Rapide"
+              aria-pressed="true"
+            >
+              <strong>Rapide</strong><small>L’essentiel · jusqu’à 5 min</small>
+            </button>
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="20"
+              data-duration="10"
+              data-name="Standard"
+              aria-pressed="false"
+            >
+              <strong>Standard</strong><small>Plus de détails · jusqu’à 10 min</small>
+            </button>
+            <button
+              type="button"
+              class="lk-pack"
+              data-budget="100"
+              data-duration="30"
+              data-name="Approfondi"
+              aria-pressed="false"
+            >
+              <strong>Approfondi</strong><small>Pour aller plus loin · jusqu’à 30 min</small>
+            </button>
+          </div>
+          <p class="lk-accesshelp">Lockin choisit les sources pour vous. Vous pourrez les consulter avec la synthèse.</p>
+          <details class="lk-settings"><summary>Personnaliser ma recherche</summary>
+          <div class="lk-fieldhead">
             <label for="lk-source-mode">Choix des sources</label>
           </div>
           <select id="lk-source-mode">
-            <option value="auto">Automatique — jusqu’à 5 domaines</option>
-            <option value="manual">Je choisis mes domaines</option>
+            <option value="auto">Choisir les sources pour moi</option>
+            <option value="manual">Choisir mes sites</option>
           </select>
           <p class="lk-accesshelp" id="lk-source-help">
             L’agent recherche des sources pertinentes, en privilégiant les
@@ -74,43 +112,6 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                 Ajouter
               </button>
             </div>
-          </div>
-          <div class="lk-divider"></div>
-          <div class="lk-fieldhead">
-            <label id="lk-packslabel">Pack de recherche</label
-            ><span id="lk-packstate" aria-live="polite">Rapide</span>
-          </div>
-          <div class="lk-packs" role="group" aria-labelledby="lk-packslabel">
-            <button
-              type="button"
-              class="lk-pack"
-              data-budget="10"
-              data-duration="5"
-              data-name="Rapide"
-              aria-pressed="true"
-            >
-              <strong>Rapide</strong><small>10 actions · 5 min · objectif 2 constats</small>
-            </button>
-            <button
-              type="button"
-              class="lk-pack"
-              data-budget="20"
-              data-duration="10"
-              data-name="Standard"
-              aria-pressed="false"
-            >
-              <strong>Standard</strong><small>20 actions · 10 min</small>
-            </button>
-            <button
-              type="button"
-              class="lk-pack"
-              data-budget="100"
-              data-duration="30"
-              data-name="Approfondi"
-              aria-pressed="false"
-            >
-              <strong>Approfondi</strong><small>100 actions · 30 min</small>
-            </button>
           </div>
           <p id="lk-budget-help" class="lk-accesshelp" role="status"></p>
           <div class="lk-limits">
@@ -169,6 +170,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               </div>
             </div>
           </div>
+          </details>
           <div class="lk-divider"></div>
           <div id="lk-auth">
             <label for="lk-access">Code d’accès aux recherches</label>
@@ -182,8 +184,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               aria-describedby="lk-accesshelp"
             />
             <p id="lk-accesshelp" class="lk-accesshelp">
-              Le jeton opérateur configuré sur votre serveur. Il reste en
-              mémoire dans cette page, jamais la clé Anthropic.
+              Le code fourni par la personne qui gère votre accès à Lockin.
             </p>
           </div>
           <div id="lk-demo-options" hidden>
@@ -302,37 +303,6 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
                   stroke-width="5"
                 />
                 <circle
-                  id="lk-budgetarc"
-                  class="lk-arc"
-                  cx="50"
-                  cy="50"
-                  r="43"
-                  fill="none"
-                  stroke-width="5"
-                  stroke-linecap="round"
-                  stroke-dasharray="91.86 270.18"
-                />
-              </svg>
-              <div class="lk-ringvalue">
-                <span id="lk-used">0</span><small id="lk-total">sur 100</small>
-              </div>
-            </div>
-            <div class="lk-meterlabel">
-              Actions utilisées<small id="lk-remaining">100 restantes</small>
-            </div>
-          </div>
-          <div class="lk-meter">
-            <div class="lk-ring">
-              <svg viewBox="0 0 100 100" aria-hidden="true">
-                <circle
-                  class="lk-track"
-                  cx="50"
-                  cy="50"
-                  r="43"
-                  fill="none"
-                  stroke-width="5"
-                />
-                <circle
                   id="lk-timearc"
                   class="lk-timearc"
                   cx="50"
@@ -354,18 +324,52 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
             </div>
           </div>
           <div class="lk-current">
+            <div class="lk-costsummary"><small>COÛT ESTIMÉ DE LA VEILLE</small><strong id="lk-publiccost">—</strong><small id="lk-publiccost-note">Calcul en cours</small></div>
+            <div class="lk-actionsummary">
+              <small id="lk-currentlabel">ACTION EN COURS</small
+              ><span id="lk-currenttext">En attente</span
+              >
+            </div>
+          </div>
+        </div>
+        <details class="lk-technical"><summary>Détails de consommation et fonctionnement</summary><p id="lk-currentdomain" class="lk-accesshelp"></p>
+          <div class="lk-technical-meters">          <div class="lk-meter">
+            <div class="lk-ring">
+              <svg viewBox="0 0 100 100" aria-hidden="true">
+                <circle
+                  class="lk-track"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                />
+                <circle
+                  id="lk-budgetarc"
+                  class="lk-arc"
+                  cx="50"
+                  cy="50"
+                  r="43"
+                  fill="none"
+                  stroke-width="5"
+                  stroke-linecap="round"
+                  stroke-dasharray="91.86 270.18"
+                />
+              </svg>
+              <div class="lk-ringvalue">
+                <span id="lk-used">0</span><small id="lk-total">sur 100</small>
+              </div>
+            </div>
+            <div class="lk-meterlabel">
+              Actions utilisées<small id="lk-remaining">100 restantes</small>
+            </div>
+          </div>
             <div class="lk-costsummary" role="status" aria-live="polite">
               <small>COÛT DERNIÈRE REQUÊTE</small>
               <strong id="lk-lastcost">—</strong>
               <small id="lk-lastcostdetail">Aucun appel terminé</small>
             </div>
-            <div class="lk-actionsummary">
-              <small id="lk-currentlabel">ACTION EN COURS</small
-              ><span id="lk-currenttext">En attente</span
-              ><small id="lk-currentdomain"></small>
-            </div>
           </div>
-        </div>
         <section class="lk-usage" aria-labelledby="lk-usage-title">
           <h3 id="lk-usage-title">Coût de cette requête</h3>
           <dl class="lk-usage-metrics">
@@ -375,24 +379,28 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
           </dl>
           <p id="lk-usage-note"></p>
         </section>
-        <p id="lk-early-summary" class="lk-early-summary" role="status" hidden></p>
-        <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
-        <div class="lk-watch-actions">
-          <button type="button" class="lk-plain" id="lk-mission-watch" hidden>
-            Voir la veille et ses actualisations</button
-          ><span class="lk-accesshelp" id="lk-enrichment" role="status"></span>
-        </div>
         <section
           id="lk-draft"
           class="lk-notice"
           hidden
           aria-label="Réponse progressive du modèle"
         >
-          <strong>Réception du modèle · Provisoire, non exécuté</strong>
+          <strong>Détails de la préparation · non encore validés</strong>
           <p id="lk-draft-action"></p>
           <pre id="lk-draft-input"></pre>
           <p id="lk-draft-text"></p>
         </section>
+          <aside class="lk-side">
+            <h3>Dernières actions</h3>
+            <div id="lk-recent"></div>
+          </aside>        </details>
+        <p id="lk-early-summary" class="lk-early-summary" role="status" hidden></p>
+        <p id="lk-tool-warning" class="lk-notice" role="status" hidden></p>
+        <div class="lk-watch-actions">
+          <button type="button" class="lk-plain" id="lk-mission-watch" hidden>
+            Retrouver cette veille</button
+          ><span class="lk-accesshelp" id="lk-enrichment" role="status"></span>
+        </div>
         <p id="lk-situation" class="lk-situation" hidden></p>
         <p id="lk-connection" class="lk-accesshelp">
           Actualisation du serveur toutes les secondes
@@ -420,10 +428,7 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
               </p>
             </div>
           </div>
-          <aside class="lk-side">
-            <h3>Dernières actions</h3>
-            <div id="lk-recent"></div>
-          </aside>
+
         </div>
         <section id="lk-journal" hidden>
           <div class="lk-fieldhead">
@@ -437,8 +442,8 @@ Les nouveautés des outils et frameworks d’agents IA</textarea
         <div id="lk-sources" hidden></div>
       </section>
       <footer class="lk-footer">
-        <span>LOCKIN · L’AUTONOMIE OBSERVABLE</span
-        ><span>Recherche web · Claude Haiku 4.5</span>
+        <span>LOCKIN · VOTRE VEILLE SIMPLIFIÉE</span
+        ><span>Des informations à vérifier, des sources à consulter</span>
       </footer>
     </div>
   </body>

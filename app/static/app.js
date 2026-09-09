@@ -523,7 +523,7 @@
     early.hidden = !showEarly;
     if (showEarly) {
       early.textContent = (state.summary.partial ? "Synthèse partielle disponible" : "Synthèse prête") +
-        " · terminée " + time(advance) + " avant la fin prévue. Aucun appel supplémentaire nécessaire pour l’afficher.";
+        " · terminée " + time(advance) + " avant la fin prévue. Votre synthèse est disponible dès maintenant.";
       if (early.dataset.mission !== state.id) {
         early.dataset.mission = state.id;
         early.classList.remove("lk-early-reveal");
@@ -573,20 +573,29 @@
         " 270.18",
     );
     q("#lk-currentlabel").textContent = done
-      ? "MISSION CLOSE"
+      ? "RECHERCHE TERMINÉE"
       : state.status === "stopping"
         ? "ARRÊT DEMANDÉ"
-        : "ACTION EN COURS";
+        : "EN COURS";
     q("#lk-currenttext").textContent = done
       ? names[state.status] || state.status
       : state.status === "stopping"
         ? "Arrêt de l’appel en cours"
-        : tools[state.current_action] || "Haiku prépare la prochaine action";
+        : tools[state.current_action] || "Lockin prépare votre recherche";
     q("#lk-currentdomain").textContent =
       state.model_calls_used +
       " appels modèle · " +
       state.network_requests_used +
       " requêtes réseau";
+    const totalCost = state.total_estimated_cost_usd;
+    q("#lk-publiccost").textContent = demo ? "Démo gratuite"
+      : Number.isFinite(totalCost) && state.last_request_cost
+        ? "≈ " + dollars(totalCost) : "—";
+    q("#lk-publiccost-note").textContent = demo ? "Aucune dépense réelle"
+      : !state.last_request_cost ? "Pas encore de coût mesuré"
+      : !state.usage?.tokens_complete || !Number.isFinite(state.last_request_cost.amount_usd)
+        ? "Estimation partielle · mesures manquantes"
+        : "Estimation en dollars · appels terminés";
     const cost = state.last_request_cost;
     if (!cost) {
       q("#lk-lastcost").textContent = "—";
@@ -1370,7 +1379,7 @@
     const automatic = q("#lk-source-mode").value === "auto";
     q("#lk-manual-sources").hidden = automatic;
     q("#lk-source-help").textContent = automatic
-      ? "L’agent recherche jusqu’à 5 domaines pertinents, en privilégiant les sources d’origine. Découverte et sélection utilisent 2 actions et des tokens supplémentaires : prévoyez au moins 4 actions pour lire une page et sauvegarder un constat. Le pack Rapide est recommandé."
+      ? "Lockin sélectionne jusqu’à 5 sites pertinents, en privilégiant les publications d’origine. Vous retrouverez les sources avec les résultats."
       : "L’agent consultera uniquement ces domaines. Ajoutez au moins une source autorisée.";
     updateLimits();
   }
@@ -1387,13 +1396,13 @@
     apiEnabled = config.api_enabled;
     const button = q("#lk-api-toggle");
     button.disabled = changingApi || typeof apiEnabled !== "boolean";
-    button.textContent = apiEnabled ? "Désactiver l’API" : "Réactiver l’API";
+    button.textContent = apiEnabled ? "Mettre les recherches en pause" : "Réactiver les recherches";
     button.setAttribute("aria-label", button.textContent + (apiEnabled ? " — actuellement activée" : " — actuellement désactivée"));
     const status = q("#lk-api-status");
     status.hidden = false;
     status.textContent = apiEnabled
-      ? "API activée · Les recherches réelles consomment du crédit."
-      : "API désactivée · Aucune nouvelle recherche payante. Mes veilles reste accessible. Les appels déjà envoyés peuvent avoir été facturés.";
+      ? "Les recherches sont disponibles. Leur coût estimé s’affiche pendant la veille."
+      : "Les recherches sont en pause pour tout le monde. Vos veilles restent accessibles. Les recherches déjà envoyées peuvent avoir été facturées.";
   }
   async function refreshApiControl() {
     if (demo || changingApi) return;
@@ -1401,9 +1410,9 @@
     catch {
       apiEnabled = null;
       q("#lk-api-toggle").disabled = true;
-      q("#lk-api-toggle").textContent = "API · état indisponible";
+      q("#lk-api-toggle").textContent = "Connexion à vérifier";
       q("#lk-api-status").hidden = false;
-      q("#lk-api-status").textContent = "État de l’API non confirmé. Vérifiez votre jeton et la connexion.";
+      q("#lk-api-status").textContent = "Impossible de vérifier si les recherches sont disponibles. Vérifiez votre connexion.";
     }
   }
   q("#lk-api-toggle").onclick = async () => {
