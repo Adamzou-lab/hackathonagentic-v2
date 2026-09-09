@@ -1546,12 +1546,7 @@
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  if (!demo && remembered()) {
-    resumePending = true;
-    q(".lk-submit").textContent = "Retrouver ma veille";
-    q("#lk-accesshelp").textContent =
-      "Saisissez votre code pour retrouver la dernière mission de cet onglet.";
-  }
+  // Arrival always starts a new search; previous watches remain in Mes veilles.
   if (demo) {
     q("#lk-api-toggle").hidden = true;
     q("#lk-demo-banner").hidden = false;
