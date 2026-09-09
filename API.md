@@ -51,11 +51,22 @@ Sujet : 1–500 caractères. De 1 à 5 noms d'hôtes exacts, sans schéma, chemi
   "action_budget":20, "actions_used":3, "actions_remaining":17,
   "duration_seconds":600, "elapsed_seconds":12, "remaining_seconds":588,
   "model_calls_used":2, "network_requests_used":3,
+  "last_request_cost":{"model":"claude-haiku-4-5","currency":"USD",
+    "amount_usd":0.01042,"estimated":true,"input_tokens":170,
+    "output_tokens":50,"cache_creation_input_tokens":0,
+    "cache_read_input_tokens":0,"web_search_requests":1},
+  "total_estimated_cost_usd":0.02108,
   "current_action":"read_page", "error":null,
   "sources":[], "findings":[], "events":[],
   "summary":{"partial":true,"text":"Aucun résultat exploitable pour le moment."}
 }
 ```
+
+`last_request_cost` décrit uniquement la dernière réponse fournisseur terminée.
+Le montant inclut les jetons d'entrée, de sortie et de cache ainsi que les appels
+à la recherche web signalés par Anthropic. Il s'agit d'une estimation en USD au
+tarif public de Haiku 4.5, pas d'une facture. Pour un modèle sans tarif configuré,
+les compteurs restent visibles et `amount_usd` vaut `null` : aucun montant n'est inventé.
 
 États : `pending`, `running`, `stopping`, `stopped`, `refused`, `completed`, `budget_exhausted`, `deadline_reached`, `failed`. Arrêter le polling aux états terminaux, jamais à `stopping`. Les jauges représentent `actions_used/action_budget` et `elapsed_seconds/duration_seconds`, pas un pourcentage de connaissances trouvées.
 

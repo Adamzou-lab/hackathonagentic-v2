@@ -379,14 +379,32 @@
   border-left: 1px solid var(--lk-line);
   padding: 8px 16px;
   display: flex;
-  flex-direction: column;
   justify-content: center;
-  gap: 6px;
+  gap: 16px;
   font-size: 12px;
 }
 #lockin-mock .lk-current small {
   color: var(--lk-muted);
   font-size: 11px;
+}
+#lockin-mock .lk-costsummary,
+#lockin-mock .lk-actionsummary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+#lockin-mock .lk-costsummary {
+  border-right: 1px solid var(--lk-line);
+  padding-right: 16px;
+}
+#lockin-mock #lk-lastcost {
+  color: var(--lk-accent);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 #lockin-mock .lk-tabs {
   display: flex;
@@ -604,6 +622,14 @@
   #lockin-mock .lk-meter {
     flex-direction: column;
     text-align: center;
+  }
+  #lockin-mock .lk-current {
+    flex-direction: column;
+  }
+  #lockin-mock .lk-costsummary {
+    border-right: 0;
+    border-bottom: 1px solid var(--lk-line);
+    padding: 0 0 12px;
   }
   #lockin-mock .lk-tabs {
     gap: 22px;
@@ -1121,13 +1147,6 @@ body {
 #lockin-mock .lk-brief-limits { padding: 20px 0 8px; color: var(--lk-muted); }
 #lockin-mock .lk-result .lk-interest { display: block; }
 #lockin-mock .lk-source { flex-wrap: wrap; overflow-wrap: anywhere; }
-#lockin-mock #lk-draft { min-height: 115px; border-radius: 14px; padding: 18px 22px; }
-#lockin-mock #lk-draft-action { font-weight: 500; }
-#lockin-mock #lk-draft-text { white-space: pre-wrap; line-height: 1.65; }
-#lockin-mock #lk-draft summary { cursor: pointer; color: var(--lk-muted); font-size: 12px; }
-#lockin-mock #lk-draft pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-#lockin-mock .lk-budgetarc, #lockin-mock .lk-timearc { transition: stroke-dasharray .3s ease; }
-@media (prefers-reduced-motion: reduce) { #lockin-mock .lk-budgetarc, #lockin-mock .lk-timearc { transition: none; } }
 #lockin-mock .lk-usage { margin: 20px 0; padding: 22px; border: 1px solid var(--lk-border, #ddd); border-radius: 16px; }
 #lockin-mock .lk-usage h3 { margin: 0 0 18px; font-size: 15px; }
 #lockin-mock .lk-usage-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin: 0; }

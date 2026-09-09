@@ -7,23 +7,6 @@
   const apiBase = document.querySelector('meta[name="lockin-api-base"]')?.content || "";
   const demoApi = demo ? window.createLockinDemo() : null;
   const journalNodes = new Map();
-  let resultSignature = "";
-  let draftTimer = null, draftInput = "", draftText = "";
-  function clearDraft() {
-    clearTimeout(draftTimer);
-    draftTimer = null;
-    draftInput = draftText = "";
-    q("#lk-draft-input").textContent = "";
-    q("#lk-draft-text").textContent = "";
-  }
-  function paintDraft() {
-    if (draftTimer !== null) return;
-    draftTimer = setTimeout(() => {
-      draftTimer = null;
-      q("#lk-draft-input").textContent = draftInput;
-      q("#lk-draft-text").textContent = draftText;
-    }, 80);
-  }
   // Incidents constates par le navigateur. Volontairement separes des
   // evenements du serveur : ils n'ont pas de seq, ils ne font pas foi, et
   // leur horodatage est une heure de detection, pas une heure de panne.
@@ -157,6 +140,17 @@
       corroborated: "Information corroborée",
       conflicting: "Sources contradictoires",
     })[finding.confidence] || "Niveau de corroboration non précisé";
+  const integer = (value) =>
+    new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(
+      Number(value) || 0,
+    );
+  const dollars = (value) =>
+    new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6,
+    }).format(value);
   function https(value) {
     try {
       const url = new URL(value);
@@ -493,8 +487,6 @@
     if (mission?.id === state.id && mission.reuse && !state.reuse)
       state = { ...state, reuse: mission.reuse };
     if (mission?.id !== state.id) {
-      clearDraft();
-      resultSignature = "";
       journalNodes.clear();
       q("#lk-draft").hidden = true;
       q("#lk-draft-input").textContent = "";
@@ -565,6 +557,35 @@
       " appels modèle · " +
       state.network_requests_used +
       " requêtes réseau";
+    const cost = state.last_request_cost;
+    if (!cost) {
+      q("#lk-lastcost").textContent = "—";
+      q("#lk-lastcostdetail").textContent = "Aucun appel terminé";
+    } else {
+      q("#lk-lastcost").textContent = Number.isFinite(cost.amount_usd)
+        ? "≈ " + dollars(cost.amount_usd)
+        : "Indisponible";
+      const details = [
+        integer(cost.input_tokens) + " jetons entrée",
+        integer(cost.output_tokens) + " sortie",
+      ];
+      if (cost.cache_creation_input_tokens)
+        details.push(integer(cost.cache_creation_input_tokens) + " cache écrit");
+      if (cost.cache_read_input_tokens)
+        details.push(integer(cost.cache_read_input_tokens) + " cache lu");
+      if (cost.web_search_requests)
+        details.push(
+          integer(cost.web_search_requests) +
+            (cost.web_search_requests === 1
+              ? " recherche web"
+              : " recherches web"),
+        );
+      q("#lk-lastcostdetail").textContent =
+        details.join(" · ") +
+        (Number.isFinite(cost.amount_usd)
+          ? " · estimation tarif public"
+          : " · tarif du modèle non configuré");
+    }
     if (state.status === "refused") notice(state.refusal_reason);
     else if (state.error)
       notice(
@@ -579,9 +600,6 @@
         : "SYNTHÈSE TERMINÉE"
       : "SYNTHÈSE EN CONSTRUCTION";
     const results = q("#lk-findings");
-    const signature = JSON.stringify([state.id, state.findings, state.sources, state.summary, done]);
-    if (signature !== resultSignature) {
-    resultSignature = signature;
     results.replaceChildren();
     results.append(briefOverview(state.findings));
     results.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
@@ -622,7 +640,6 @@
         ),
       );
     results.append(briefLimits(state.findings, state.summary.partial));
-    }
     const sourceHost = q("#lk-sources");
     sourceHost.replaceChildren();
     for (const source of state.sources) {
@@ -768,29 +785,31 @@
             if (!mission.events.some((e) => e.seq === data.seq))
               mission.events.push(data);
             if (data.kind === "model_started") {
-              clearDraft();
-              q("#lk-draft").hidden = false;
-              q("#lk-draft-action").textContent = "Le modèle prépare la prochaine étape…";
+              q("#lk-draft").hidden = true;
+              q("#lk-draft-input").textContent = "";
+              q("#lk-draft-text").textContent = "";
             }
             clearTimeout(refreshTimer);
-            refreshTimer = setTimeout(refresh, 250);
+            refreshTimer = setTimeout(refresh, 100);
           } else if (kind === "draft") {
             q("#lk-draft").hidden = false;
             if (data.phase === "tool_input_started") {
               q("#lk-draft-action").textContent =
-                "Préparation : " + (tools[data.action] || data.action || "outil");
-              draftInput = "";
+                "Appel proposé : " + (data.action || "outil");
+              q("#lk-draft-input").textContent = "";
             }
             if (data.phase === "tool_input")
-              draftInput = (draftInput + (data.partial_json || "")).slice(-16000);
+              q("#lk-draft-input").textContent = (
+                q("#lk-draft-input").textContent + (data.partial_json || "")
+              ).slice(-16000);
             if (data.phase === "text")
-              draftText = (draftText + (data.text || "")).slice(-16000);
-            paintDraft();
+              q("#lk-draft-text").textContent = (
+                q("#lk-draft-text").textContent + (data.text || "")
+              ).slice(-16000);
           } else if (kind === "end") {
             const state = await api("missions/" + encodeURIComponent(id));
             if (version !== generation) return false;
             render(state);
-            q("#lk-draft-action").textContent = "Flux terminé · les résultats validés sont dans la synthèse.";
             ended = true;
             q("#lk-connection").textContent = "Flux terminé · Journal conservé";
             return false;
