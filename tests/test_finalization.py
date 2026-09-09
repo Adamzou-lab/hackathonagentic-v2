@@ -33,7 +33,7 @@ def test_finalization_saves_before_stopping_without_extra_search(tmp_path, trigg
             if trigger=='time': d['started_epoch']=time.time()-590
             if trigger=='tokens': d['model_calls_used']=1
             store.save(d,'model_finished' if trigger=='tokens' else 'fixture',
-                       {'usage':{'input_tokens':11500,'output_tokens':0}} if trigger=='tokens' else {})
+                       {'usage':{'input_tokens':int(d['token_budget']*.72),'output_tokens':0}} if trigger=='tokens' else {})
             provider=Provider()
             await Engine(store,provider).run(mid)
             state=store.snapshot(mid)
@@ -99,7 +99,7 @@ def test_automatic_sources_keep_room_after_discovery(tmp_path):
     try:
         mid=store.create(MissionInput(subject='Veille',auto_sources=True,action_budget=10))
         d=store.get(mid)
-        assert d['token_budget']==32000 and d['finalization_reserve']==2
+        assert d['token_budget']==48000 and d['finalization_reserve']==2
         assert d['web_search_limit']==1
     finally:store.db.close()
 

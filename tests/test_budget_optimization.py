@@ -89,7 +89,7 @@ def test_failed_finalization_does_not_buy_an_unaffordable_retry(tmp_path):
             mid=s.create(MissionInput(subject='Veille documentaire',auto_sources=True,action_budget=20))
             d=s.get(mid);d['domains']=['example.com'];d['model_calls_used']=1
             d['pages']={'one':{'source_id':'one','url':'https://example.com','text':'Un extrait vérifiable.'}}
-            s.save(d,'model_finished',{'usage':{'input_tokens':31000,'output_tokens':0}})
+            s.save(d,'model_finished',{'usage':{'input_tokens':d['token_budget']-9000,'output_tokens':0}})
             p=Provider();await Engine(s,p).run(mid)
             state=s.snapshot(mid)
             assert p.calls==2 and state['status']=='budget_exhausted'

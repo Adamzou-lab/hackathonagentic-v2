@@ -3,7 +3,7 @@
 def limits(actions, auto_sources=False):
     minimum_research = 3 if auto_sources else 1
     reserve = min(3, max(1, actions // 4), max(0, actions - minimum_research))
-    tokens = 16000 if actions <= 10 else (24000 if actions <= 20 else 40000)
+    tokens = 32000 if actions <= 10 else (64000 if actions <= 20 else 112000)
     # Native web discovery bills retrieved content before the first page read.
     # Keep the finalization margin usable after this bootstrap cost.
     return {'finalization_reserve': reserve, 'research_action_limit': actions - reserve,

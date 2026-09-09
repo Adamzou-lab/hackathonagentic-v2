@@ -29,7 +29,7 @@ automatique comprise ; Standard en autorise deux, Approfondi quatre. Les liens
 déjà découverts restent disponibles pour lecture. Les tentatives réservées
 comptent même si le fournisseur échoue.
 
-Les seuils de tokens manuels sont 16 000 / 24 000 / 40 000. Le mode automatique
+Les seuils de tokens manuels sont 32 000 / 64 000 / 112 000. Le mode automatique
 ajoute 16 000 pour la découverte native, dont un essai a consommé près de
 14 000 tokens avant toute lecture. Ces seuils sont vérifiés entre les appels :
 le dernier peut les dépasser et un appel interrompu peut avoir un coût inconnu.
@@ -68,7 +68,7 @@ L'animation respecte la préférence de réduction des mouvements.
 
 ## Optimisation suivante — 9 septembre 2026
 
-Le plafond total de tokens ne change pas. La réserve de finalisation est désormais
+La réserve de finalisation est désormais
 calculée à partir des trois dernières décisions mesurées : maximum de leur taille,
 multiplié par 1,5, plus 4 096 tokens, avec un minimum de 8 192. Elle couvre la
 proposition finale et sa vérification sémantique. Sans décision mesurée,

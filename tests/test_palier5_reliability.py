@@ -94,7 +94,7 @@ def test_zero_calls_is_a_measured_zero(mission):
 
 def test_token_threshold_prevents_next_model_reservation(mission):
     store, mid = mission
-    report(store, mid, {'input_tokens': 24000, 'output_tokens': 10})
+    report(store, mid, {'input_tokens': store.get(mid)['token_budget'], 'output_tokens': 10})
     before = store.get(mid)['model_calls_used']
     with pytest.raises(Halt) as stopped:
         Engine(store, object()).reserve(mid, 'model_calls_used', 60, 'model_started')
@@ -103,7 +103,7 @@ def test_token_threshold_prevents_next_model_reservation(mission):
     assert store.events(mid)[-1]['kind'] == 'token_budget_exhausted'
 
 
-@pytest.mark.parametrize('actions,limit', [(10,16000),(20,24000),(100,40000)])
+@pytest.mark.parametrize('actions,limit', [(10,32000),(20,64000),(100,112000)])
 def test_packs_have_explicit_token_limits(tmp_path, actions, limit):
     store = Store(tmp_path/'limits')
     try:
