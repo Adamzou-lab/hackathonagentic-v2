@@ -4,6 +4,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from app.agent.budget import limits
 from app.storage.usage import usage_summary
 from app.storage.watches import WatchStore, watch_identity
 from app.storage.incidents import GuardedConnection, IncidentLog, StorageUnavailable, mission_context, json_guard
@@ -114,8 +115,9 @@ class Store(WatchStore):
         inputs = request.model_dump(exclude={'watch_id','force_refresh','allow_new'})
         data = dict(id=mid, watch_id=wid, **inputs, **previous, status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
-                    actions_used=0, model_calls_used=0, network_requests_used=0,
+                    actions_used=0, model_calls_used=0, network_requests_used=0, web_search_calls_used=0,
                     last_request_cost=None, total_estimated_cost_usd=0,
+                    **limits(request.action_budget, request.auto_sources),
                     current_action=None, current_operation=None, error=None, sources=[], findings=[], pages={},
                     keys={}, attempts={}, had_errors=False)
         self.save(data, 'created', {'request': request.model_dump()})
@@ -210,6 +212,8 @@ class Store(WatchStore):
         empty = 'Aucun constat validé pour le moment.'
         if data['status'] == 'budget_exhausted':
             empty = 'Budget épuisé avant la sauvegarde d’un constat validé. Consultez le journal pour voir les lectures et les erreurs rencontrées.'
+            if data.get('finalization_reason'):
+                empty = 'Recherche arrêtée pour finalisation, mais aucune preuve exploitable n’a pu être validée. Aucun résultat n’a été inventé.'
         elif data['status'] == 'deadline_reached':
             empty = 'Durée limite atteinte avant la sauvegarde d’un constat validé.'
         elif data['status'] == 'completed':

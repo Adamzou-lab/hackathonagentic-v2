@@ -17,6 +17,7 @@ from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
 from app.agent.failures import failure_code, must_stop
 from app.agent.evidence import passages
 from app.costs import estimate_request_cost
+from app.agent.budget import limits, observed_tokens
 
 
 class Halt(Exception):
@@ -81,10 +82,30 @@ class Engine:
 
     def reserve(self, mid, counter, limit, kind):
         d = self.guard(mid)
-        if d[counter] >= limit:
+        if counter == 'model_calls_used':
+            spent = observed_tokens(self.store.events(mid))
+            ceiling = d.get('token_budget', 16000)
+            if spent >= ceiling:
+                self.store.save(d, 'token_budget_exhausted', {'tokens_observed':spent, 'token_budget':ceiling})
+                raise Halt('budget_exhausted')
+        if d.get(counter, 0) >= limit:
             raise Halt('budget_exhausted')
-        d[counter] += 1
+        d[counter] = d.get(counter, 0) + 1
         self.store.save(d, kind, {counter:d[counter]})
+
+    def prepare_finalization(self, mid):
+        d = self.guard(mid)
+        policy = limits(d['action_budget'], d.get('auto_sources', False))
+        remaining = d['duration_minutes'] * 60 - (time.time() - d['started_epoch'])
+        spent = observed_tokens(self.store.events(mid))
+        reason = ('actions' if d['actions_used'] >= policy['research_action_limit'] else
+                  'tokens' if spent >= d.get('token_budget', policy['token_budget']) * .70 else
+                  'time' if remaining <= min(20, d['duration_minutes'] * 20) else None)
+        if reason and not d.get('finalization_reason'):
+            d['finalization_reason'] = reason
+            self.store.save(d, 'finalization_started', {'reason':reason,
+                'actions_remaining': d['action_budget']-d['actions_used'], 'tokens_observed':spent})
+        return d
 
     def model_finished(self, data, usage, **fields):
         """Persiste métriques et coût ensemble, après une réponse complète seulement."""
@@ -262,6 +283,9 @@ class Engine:
         d = self.guard(mid)
         if name in {'search_web','read_page','save_finding'} and not d['domains']:
             raise ToolFailure('sources_not_selected')
+        if name in {'discover_sources', 'search_web'}:
+            self.reserve(mid, 'web_search_calls_used', d.get('web_search_limit', limits(d['action_budget'])['web_search_limit']), 'web_search_reserved')
+            d = self.guard(mid)
         if name == 'discover_sources':
             args = DiscoveryInput.model_validate(raw)
             if not d.get('auto_sources') or d['domains'] or d.get('discovery_attempted'):
@@ -383,24 +407,29 @@ class Engine:
             d['status'] = 'running'
             self.store.save(d, 'started', {})
             while True:
-                d = self.guard(mid)
+                d = self.prepare_finalization(mid)
                 if d['actions_used'] >= d['action_budget']:
+                    raise Halt('budget_exhausted')
+                if scope_approved and d.get('finalization_reason') and not d['pages']:
+                    self.store.save(d, 'finalization_without_evidence', {'reason':'no_page_read'})
                     raise Halt('budget_exhausted')
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
-                context = {'scope_approved':scope_approved, 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
+                context = {'scope_approved':scope_approved, 'finalization':bool(d.get('finalization_reason')), 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
+                           'web_search_remaining': max(0, d.get('web_search_limit', limits(d['action_budget'])['web_search_limit'])-d.get('web_search_calls_used',0)),
+                           'available_sources':[{'url':s['url']} for s in d.get('selected_sources',[]) if s['url'] not in {p['url'] for p in d['pages'].values()}],
                            'finding_target':2 if d['action_budget'] <= 10 else None,
                            'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
                                'title':p.get('title',''), 'published_at':p.get('published_at'),
-                               'passages':passages(p)[:12]} for p in list(d['pages'].values())[-2:]],
+                               'passages':passages(p)[:6]} for p in list(d['pages'].values())[-2:]],
                            'failed_pages':[{'url':s['url'], 'error':s.get('error')} for s in d['sources'] if s.get('error')][-10:],
-                           'source_candidates':d.get('source_candidates',[]),
+                           'source_candidates':d.get('source_candidates',[]) if not d['domains'] else [],
                            'known_findings':d.get('known_findings',[]),
                            'known_findings_truncated':d.get('known_findings_truncated',False),
                            'update_since':d.get('update_since'),
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
-                           'recent_results':history[-4:]}
+                           'recent_results':history[-2:]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
                     dependency='model_provider', operation='decide')
                 d = self.guard(mid)
@@ -427,8 +456,11 @@ class Engine:
                         raise ToolFailure('sources_not_selected')
                     if raw:
                         raise ToolFailure('invalid_finish')
-                    self.store.finish(mid, 'completed')
+                    self.store.finish(mid, 'budget_exhausted' if d.get('finalization_reason') else 'completed')
                     return
+                if d.get('finalization_reason') and name != 'save_finding':
+                    self.store.save(d, 'finalization_tool_blocked', {'tool':name})
+                    raise Halt('budget_exhausted')
                 self.reserve(mid, 'actions_used', d['action_budget'], 'action_reserved')
                 d = self.guard(mid)
                 d['current_action'] = name
@@ -447,6 +479,10 @@ class Engine:
                 except Exception as exc:
                     code = failure_code(exc)
                     result = {'error': code}
+                    if isinstance(exc, ValidationError):
+                        result['validation_errors'] = [
+                            {'field':'.'.join(map(str, issue['loc'])), 'code':issue['type']}
+                            for issue in exc.errors(include_input=False, include_url=False)[:8]]
                     d = self.guard(mid)
                     d['had_errors'] = True
                     if name == 'read_page' and isinstance(raw, dict) and isinstance(raw.get('url'), str):
@@ -472,6 +508,14 @@ class Engine:
                 # Bound context even when recent results contain large pages.
                 history.append({'tool':name, 'result':
                     {k:v for k,v in result.items() if k != 'text'} if name == 'read_page' else result})
+                if d.get('finalization_reason') and name == 'save_finding' and not result.get('error'):
+                    # The structured summary is already persisted; no paid finish call.
+                    self.store.finish(mid, 'budget_exhausted')
+                    return
+                if name == 'save_finding' and not result.get('error') and d['action_budget'] <= 10 and len(d['findings']) >= 2:
+                    self.store.save(d, 'finding_target_reached', {'count':len(d['findings'])})
+                    self.store.finish(mid, 'completed')
+                    return
         except Abandoned:
             return
         except asyncio.CancelledError:

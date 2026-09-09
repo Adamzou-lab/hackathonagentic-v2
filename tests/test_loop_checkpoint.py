@@ -93,9 +93,10 @@ def test_disabled_tool_is_counted_and_never_called(tmp_path):
             state = store.snapshot(mid)
             assert state['status'] == 'budget_exhausted'
             assert provider.searches == []
-            assert len(provider.contexts) == 2
+            assert len(provider.contexts) == 1
             assert all(e['result'] == {'error':'tool_disabled_for_test'} for e in assert_closed(state))
-            assert state['actions_used'] == 2
+            assert state['actions_used'] == 1
+            assert any(e['kind'] == 'finalization_without_evidence' for e in state['events'])
         finally: store.db.close()
     asyncio.run(scenario())
 

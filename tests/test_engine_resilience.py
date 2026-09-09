@@ -214,8 +214,10 @@ def test_deadline_interrupts_an_await_without_new_action_or_false_dependency_fai
         engine = Engine(store, provider, provider.reader_factory)
         try:
             mid = create_mission(store)
+            # Isoler l'annulation à l'échéance de l'entrée anticipée en
+            # finalisation (testée séparément dans test_finalization.py).
+            engine.prepare_finalization = engine.guard
             data = store.get(mid)
-            # Horloge de mission avancée uniquement dans cette base de test.
             data['started_epoch'] = time.time() - 59.8
             store.save(data, 'test_deadline', {})
             engine.launch(mid)

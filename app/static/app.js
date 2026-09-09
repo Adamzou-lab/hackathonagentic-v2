@@ -83,6 +83,11 @@
     started: "Mission démarrée",
     model_started: "Appel à Haiku",
     model_finished: "Réponse de Haiku",
+    finalization_started: "Finalisation de la synthèse",
+    finalization_without_evidence: "Aucune preuve exploitable",
+    finalization_tool_blocked: "Réserve de finalisation protégée",
+    finding_target_reached: "Objectif de la veille atteint",
+    token_budget_exhausted: "Seuil de tokens atteint",
     network_started: "Requête réseau",
     action_reserved: "Action décomptée",
     action_started: "Action lancée",
@@ -307,6 +312,12 @@
       if (active) name = button.dataset.name;
     });
     q("#lk-packstate").textContent = name;
+    const count = q("#lk-budget").valueAsNumber;
+    const automatic = q("#lk-source-mode").value === "auto";
+    const reserved = Math.min(3, Math.max(1, Math.floor(count / 4)), Math.max(0, count - (automatic ? 3 : 1)));
+    q("#lk-budget-help").textContent = reserved
+      ? `${count} actions au total, dont ${reserved} réservée(s) à la finalisation. Les recherches s’arrêtent avant de consommer cette réserve.`
+      : "Budget trop court pour réserver une finalisation. Privilégiez le pack Rapide pour obtenir des constats.";
   }
   for (const id of ["budget", "duration"]) {
     const number = q("#lk-" + id),
@@ -380,6 +391,10 @@
   }
   function eventText(event) {
     const d = event.data || {};
+    if (event.kind === "finalization_started")
+      return "Finalisation : nouvelles recherches arrêtées, sauvegarde des preuves disponibles (" + ({actions:"réserve d’actions",tokens:"seuil de tokens",time:"temps restant"}[d.reason] || d.reason) + ").";
+    if (event.kind === "finalization_without_evidence") return "Aucune page exploitable lue : aucun constat inventé.";
+    if (event.kind === "finalization_tool_blocked") return "Nouvelle recherche bloquée pour préserver la finalisation.";
     if (event.kind === "recovery_detected")
       return "Dernier signe de vie : " + window.LockinJournal.stamp(d.last_seen_at).absolute + ". Heure exacte de coupure inconnue. Aucune relance automatique.";
     if (d.operation) return d.operation + (d.code ? " · " + d.code : "") + (d.outcome ? " · " + d.outcome : "");
@@ -502,6 +517,19 @@
     if (!demo) remember(state.id);
     showWork();
     const done = terminal.has(state.status);
+    const early = q("#lk-early-summary");
+    const advance = Math.max(0, state.duration_seconds - state.elapsed_seconds);
+    const showEarly = ["completed", "budget_exhausted"].includes(state.status) && state.findings.length > 0 && advance > 0;
+    early.hidden = !showEarly;
+    if (showEarly) {
+      early.textContent = (state.summary.partial ? "Synthèse partielle disponible" : "Synthèse prête") +
+        " · terminée " + time(advance) + " avant la fin prévue. Aucun appel supplémentaire nécessaire pour l’afficher.";
+      if (early.dataset.mission !== state.id) {
+        early.dataset.mission = state.id;
+        early.classList.remove("lk-early-reveal");
+        requestAnimationFrame(() => early.classList.add("lk-early-reveal"));
+      }
+    }
     q("#lk-nav").disabled = !done;
     q("#lk-nav").textContent = done ? "Nouvelle veille" : "Mission en cours";
     q("#lk-status").textContent = names[state.status] || state.status;
@@ -529,6 +557,8 @@
     q("#lk-used").textContent = state.actions_used;
     q("#lk-total").textContent = "sur " + state.action_budget;
     q("#lk-remaining").textContent = state.actions_remaining + " restantes";
+    if (state.finalization_reason && !done)
+      q("#lk-remaining").textContent += " · finalisation";
     q("#lk-elapsed").textContent = time(state.elapsed_seconds);
     q("#lk-timemax").textContent =
       "sur " + Math.round(state.duration_seconds / 60) + " min";
@@ -1340,8 +1370,9 @@
     const automatic = q("#lk-source-mode").value === "auto";
     q("#lk-manual-sources").hidden = automatic;
     q("#lk-source-help").textContent = automatic
-      ? "L’agent recherche jusqu’à 5 domaines pertinents, en privilégiant les publications officielles et d’origine. La sélection est visible dans le journal et modifiable depuis Mes veilles. Découverte et sélection utilisent 2 actions : prévoyez au moins 3 actions pour commencer la recherche."
+      ? "L’agent recherche jusqu’à 5 domaines pertinents, en privilégiant les sources d’origine. Découverte et sélection utilisent 2 actions et des tokens supplémentaires : prévoyez au moins 4 actions pour lire une page et sauvegarder un constat. Le pack Rapide est recommandé."
       : "L’agent consultera uniquement ces domaines. Ajoutez au moins une source autorisée.";
+    updateLimits();
   }
   let apiEnabled = null;
   let changingApi = false;

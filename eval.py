@@ -136,12 +136,14 @@ async def s01_mission_nominale(store):
 
 
 async def s02_budget_epuise(store):
-    """Le budget compte les tentatives d'outils et arrête la mission au plafond."""
+    """La recherche ne dépense pas l'action réservée lorsqu'aucune page n'a été lue."""
     mid = mission(store, budget=2)
     actions = [('search_web', {'query': 'a', 'k': 1})] * 5
     await Engine(store, Fournisseur(actions), fabrique()).run(mid)
     etat = store.snapshot(mid)
-    ok = etat['status'] == 'budget_exhausted' and etat['actions_used'] == 2
+    ok = (etat['status'] == 'budget_exhausted' and etat['actions_used'] == 1
+          and etat['actions_remaining'] == 1
+          and any(e['kind'] == 'finalization_without_evidence' for e in etat['events']))
     return ok, f"statut={etat['status']} actions={etat['actions_used']}/2"
 
 
