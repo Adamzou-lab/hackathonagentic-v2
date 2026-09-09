@@ -64,3 +64,52 @@ Quand une synthèse existe avant l'échéance, une courte animation annonce le t
 gagné. Aucun temps d'attente artificiel n'est ajouté. Une synthèse partielle est
 explicitement nommée ; les erreurs et les recherches vides ne sont pas célébrées.
 L'animation respecte la préférence de réduction des mouvements.
+
+
+## Optimisation suivante — 9 septembre 2026
+
+Le plafond total de tokens ne change pas. La réserve de finalisation est désormais
+calculée à partir des trois dernières décisions mesurées : maximum de leur taille,
+multiplié par 1,25, plus 1 024 tokens, avec un minimum de 4 096. Sans décision mesurée,
+la réserve historique de 30 % est conservée. Le contenu des recherches web natives
+n'entre pas dans cette estimation d'une décision. La réserve exacte figure dans
+`finalization_started`. Ce calcul reste une estimation ; le contrôle entre appels
+n'est pas une limite stricte de facturation côté fournisseur.
+
+Les liens déjà trouvés sont conservés, y compris après la sortie de l'historique
+court. Tant que des liens non lus et sans échec connu sont disponibles, le modèle
+choisit entre lecture, sauvegarde, fin ou refus, sans nouvelle recherche web payante.
+Le choix de l'action reste effectué par le modèle, sans routage par mots-clés.
+Avant toute lecture, le schéma de sauvegarde inutile n'est pas envoyé. Les étapes
+de découverte/sélection reçoivent leurs consignes spécifiques et un contexte réduit.
+La recherche native est invitée à ne pas rédiger une synthèse qui serait ignorée.
+
+Le catalogue est limité à quatre extraits par page au lieu de six, sur deux pages.
+Le classement lexical local sert uniquement à sélectionner des données ; il ne
+choisit aucun outil. Les extraits gardent leur texte et identifiant exacts, contrôlés
+sur la page lue. Sans correspondance lexicale, ils sont répartis dans le document.
+Cette sélection partielle ne garantit pas la couverture complète de chaque page.
+
+Le format imbriqué de `save_finding` est montré explicitement. Une relance après
+échec de finalisation est évitée si le reliquat ne couvre pas une décision estimée.
+Les résultats déjà sauvegardés restent disponibles et partiels, les erreurs restent
+journalisées. L'interface distingue limite de consommation, d'étapes et de temps.
+
+Validation : 361 tests Python, 14 tests frontend, évaluation automatique 10/10.
+Ces réductions de contexte ne garantissent pas un prix par sujet ni une durée de
+10 minutes : celle-ci reste un maximum, indépendant des plafonds de consommation.
+
+
+Une recherche native supplémentaire est masquée au modèle et bloquée côté serveur
+si le reliquat ne couvre pas 1,5 fois le plus gros appel web natif mesuré (minimum
+12 000 tokens) plus la réserve de finalisation. La première recherche reste autorisée,
+faute de mesure préalable. C'est une estimation prudente, pas une borne du fournisseur.
+Le blocage serveur est journalisé `web_search_skipped` ; une sauvegarde reste possible.
+
+Les deux essais réels avant ce dernier contrôle n'ont pas démontré de réduction du
+coût total : le premier a conservé un constat en 43 113 tokens, le second a atteint
+55 005 tokens sans constat validé. Ce second essai a révélé un appel web natif de
+18 177 tokens, lancé alors que 36 828 tokens sur 40 000 étaient déjà consommés.
+Le test automatisé de non-régression vérifie que ce type d'appel n'est plus envoyé.
+Aucun troisième essai payant n'a été lancé ; le gain réel global reste à mesurer
+sur un ensemble comparable de sujets. Ne pas annoncer un pourcentage d'économie.

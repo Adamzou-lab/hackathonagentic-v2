@@ -24,3 +24,35 @@ def observed_tokens(events):
             if type(value) is int and value >= 0:
                 total += value
     return total
+
+
+def finalization_token_reserve(events, ceiling):
+    """Reserve one decision from recent measured decisions, not native web payloads."""
+    measured = []
+    for event in events:
+        data = event.get('data', {})
+        if event.get('kind') != 'model_finished' or not data.get('proposed_action'):
+            continue
+        usage = data.get('usage') or {}
+        if not isinstance(usage, dict) or any(type(usage.get(k)) is not int or usage[k] < 0
+                for k in ('input_tokens', 'output_tokens')):
+            continue
+        measured.append(observed_tokens([event]))
+    if not measured:
+        return int(ceiling * .30)
+    # Output/schema margin, with a minimum for a cited finding. No bigger total budget.
+    return min(ceiling, max(4096, int(max(measured[-3:]) * 1.25) + 1024))
+
+
+def additional_web_search_fits(events, ceiling):
+    """Avoid another native search when measured costs would consume finalization."""
+    native = [observed_tokens([e]) for e in events if e.get('kind') == 'model_finished'
+              and not e.get('data', {}).get('proposed_action')
+              and isinstance(e.get('data', {}).get('usage'), dict)
+              and isinstance(e['data']['usage'].get('server_tool_use'), dict)
+              and type(e['data']['usage']['server_tool_use'].get('web_search_requests')) is int
+              and e['data']['usage']['server_tool_use']['web_search_requests'] > 0]
+    if not native:
+        return True  # First search has no measured baseline yet.
+    estimate = max(12000, int(max(native) * 1.5))
+    return observed_tokens(events) + estimate + finalization_token_reserve(events, ceiling) < ceiling

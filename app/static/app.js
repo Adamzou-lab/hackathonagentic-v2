@@ -88,6 +88,8 @@
     finalization_tool_blocked: "Réserve de finalisation protégée",
     finding_target_reached: "Objectif de la veille atteint",
     token_budget_exhausted: "Seuil de tokens atteint",
+    web_search_skipped: "Nouvelle recherche évitée pour préserver la synthèse",
+    finalization_retry_skipped: "Relance évitée : budget restant insuffisant",
     network_started: "Requête réseau",
     action_reserved: "Action décomptée",
     action_started: "Action lancée",
@@ -532,7 +534,14 @@
     }
     q("#lk-nav").disabled = !done;
     q("#lk-nav").textContent = done ? "Nouvelle veille" : "Mission en cours";
-    q("#lk-status").textContent = names[state.status] || state.status;
+    const limitReason = state.finalization_reason ||
+      (state.events?.some(e => e.kind === "token_budget_exhausted") ? "tokens" : null);
+    const statusLabel = state.status === "budget_exhausted"
+      ? ({tokens: "Limite de consommation atteinte", actions: "Limite d’étapes atteinte",
+          time: "Temps réservé à la synthèse atteint"}[limitReason] || "Limite de recherche atteinte") +
+        (state.findings.length ? " · synthèse partielle" : " · aucun résultat validé")
+      : names[state.status] || state.status;
+    q("#lk-status").textContent = statusLabel;
     majSituation();
     q("#lk-missiontitle").textContent = state.subject;
     q("#lk-missionsub").textContent =
@@ -578,7 +587,7 @@
         ? "ARRÊT DEMANDÉ"
         : "EN COURS";
     q("#lk-currenttext").textContent = done
-      ? names[state.status] || state.status
+      ? statusLabel
       : state.status === "stopping"
         ? "Arrêt de l’appel en cours"
         : tools[state.current_action] || "Lockin prépare votre recherche";

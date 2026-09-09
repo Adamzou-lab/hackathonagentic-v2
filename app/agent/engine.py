@@ -15,9 +15,9 @@ from app.storage.watches import finding_key
 from app.agent.discovery import DiscoveryInput, SelectionInput, normalize_candidate_url
 from app.agent.web import WebReader, ToolFailure, check_url, PublicResolver
 from app.agent.failures import failure_code, must_stop
-from app.agent.evidence import passages
+from app.agent.evidence import passages, context_passages
 from app.costs import estimate_request_cost
-from app.agent.budget import limits, observed_tokens
+from app.agent.budget import limits, observed_tokens, finalization_token_reserve, additional_web_search_fits
 
 
 class Halt(Exception):
@@ -97,14 +97,17 @@ class Engine:
         d = self.guard(mid)
         policy = limits(d['action_budget'], d.get('auto_sources', False))
         remaining = d['duration_minutes'] * 60 - (time.time() - d['started_epoch'])
-        spent = observed_tokens(self.store.events(mid))
+        events = self.store.events(mid)
+        spent = observed_tokens(events)
+        ceiling = d.get('token_budget', policy['token_budget'])
+        reserve = finalization_token_reserve(events, ceiling)
         reason = ('actions' if d['actions_used'] >= policy['research_action_limit'] else
-                  'tokens' if spent >= d.get('token_budget', policy['token_budget']) * .70 else
+                  'tokens' if spent >= ceiling - reserve else
                   'time' if remaining <= min(20, d['duration_minutes'] * 20) else None)
         if reason and not d.get('finalization_reason'):
             d['finalization_reason'] = reason
             self.store.save(d, 'finalization_started', {'reason':reason,
-                'actions_remaining': d['action_budget']-d['actions_used'], 'tokens_observed':spent})
+                'actions_remaining': d['action_budget']-d['actions_used'], 'tokens_observed':spent, 'tokens_reserved':reserve})
         return d
 
     def model_finished(self, data, usage, **fields):
@@ -284,6 +287,9 @@ class Engine:
         if name in {'search_web','read_page','save_finding'} and not d['domains']:
             raise ToolFailure('sources_not_selected')
         if name in {'discover_sources', 'search_web'}:
+            if not additional_web_search_fits(self.store.events(mid), d.get('token_budget', 16000)):
+                self.store.save(d, 'web_search_skipped', {'reason':'finalization_reserve'})
+                raise ToolFailure('web_search_budget_reserved')
             self.reserve(mid, 'web_search_calls_used', d.get('web_search_limit', limits(d['action_budget'])['web_search_limit']), 'web_search_reserved')
             d = self.guard(mid)
         if name == 'discover_sources':
@@ -339,6 +345,10 @@ class Engine:
             result, usage = await self.call(mid, self.provider.search(args.query, args.k, self.guard(mid)['domains']), timeout=45,
                 dependency='model_provider', operation='search_web')
             d = self.guard(mid)
+            # Retain discovered URLs after recent_results rolls over, without another paid search.
+            hits = {s['url']:s for s in d.get('search_hits', [])}
+            hits.update({s['url']:s for s in result})
+            d['search_hits'] = list(hits.values())[-30:]
             self.model_finished(d, usage)
             return result
         if name == 'read_page':
@@ -416,12 +426,12 @@ class Engine:
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
                 context = {'scope_approved':scope_approved, 'finalization':bool(d.get('finalization_reason')), 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
-                           'web_search_remaining': max(0, d.get('web_search_limit', limits(d['action_budget'])['web_search_limit'])-d.get('web_search_calls_used',0)),
-                           'available_sources':[{'url':s['url']} for s in d.get('selected_sources',[]) if s['url'] not in {p['url'] for p in d['pages'].values()}],
+                           'web_search_remaining': max(0, d.get('web_search_limit', limits(d['action_budget'])['web_search_limit'])-d.get('web_search_calls_used',0)) if additional_web_search_fits(self.store.events(mid), d.get('token_budget',16000)) else 0,
+                           'available_sources':[{'url':s['url']} for s in list({s['url']:s for s in d.get('selected_sources',[]) + d.get('search_hits',[])}.values()) if s['url'] not in ({p['url'] for p in d['pages'].values()} | {s['url'] for s in d['sources'] if s.get('error')})],
                            'finding_target':2 if d['action_budget'] <= 10 else None,
                            'evidence_catalog':[{'source_id':p['source_id'], 'url':p['url'],
                                'title':p.get('title',''), 'published_at':p.get('published_at'),
-                               'passages':passages(p)[:6]} for p in list(d['pages'].values())[-2:]],
+                               'passages':context_passages(p, d['subject'])} for p in list(d['pages'].values())[-2:]],
                            'failed_pages':[{'url':s['url'], 'error':s.get('error')} for s in d['sources'] if s.get('error')][-10:],
                            'source_candidates':d.get('source_candidates',[]) if not d['domains'] else [],
                            'known_findings':d.get('known_findings',[]),
@@ -429,7 +439,7 @@ class Engine:
                            'update_since':d.get('update_since'),
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
-                           'recent_results':history[-2:]}
+                           'recent_results':[h for h in history[-2:] if not (h['tool'] in {'discover_sources','select_sources'} and not (isinstance(h['result'],dict) and h['result'].get('error')))]}
                 name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
                     dependency='model_provider', operation='decide')
                 d = self.guard(mid)
@@ -508,6 +518,16 @@ class Engine:
                 # Bound context even when recent results contain large pages.
                 history.append({'tool':name, 'result':
                     {k:v for k,v in result.items() if k != 'text'} if name == 'read_page' else result})
+                if d.get('finalization_reason') and result.get('error'):
+                    # Retry a failed final save only if the remaining budget can cover
+                    # a decision of the size just observed, plus output margin.
+                    events = self.store.events(mid)
+                    spent = observed_tokens(events)
+                    last_call = observed_tokens([{'kind':'model_finished','data':{'usage':usage}}])
+                    if spent + max(4096, last_call + 1024) >= d.get('token_budget', 16000):
+                        self.store.save(d, 'finalization_retry_skipped', {'reason':'insufficient_tokens', 'tokens_observed':spent})
+                        self.store.finish(mid, 'budget_exhausted')
+                        return
                 if d.get('finalization_reason') and name == 'save_finding' and not result.get('error'):
                     # The structured summary is already persisted; no paid finish call.
                     self.store.finish(mid, 'budget_exhausted')

@@ -107,8 +107,8 @@ def test_discovery_search_limit_without_valid_candidates_remains_an_error():
     (False, True, [], [{'domain': 'source.org'}], {'accept_scope', 'refuse'}),
     (True, True, [], [], {'discover_sources', 'refuse'}),
     (True, True, [], [{'domain': 'source.org'}], {'select_sources', 'refuse'}),
-    (True, True, ['source.org'], [], {'search_web', 'read_page', 'save_finding', 'finish', 'refuse'}),
-    (True, False, ['source.org'], [], {'search_web', 'read_page', 'save_finding', 'finish', 'refuse'}),
+    (True, True, ['source.org'], [], {'search_web', 'read_page', 'finish', 'refuse'}),
+    (True, False, ['source.org'], [], {'search_web', 'read_page', 'finish', 'refuse'}),
 ])
 @pytest.mark.parametrize('streaming', [False, True])
 def test_each_phase_exposes_only_its_model_choices(approved, auto, domains,
@@ -139,8 +139,13 @@ def test_each_phase_exposes_only_its_model_choices(approved, auto, domains,
     mode, messages, system, tools = provider.calls[0]
     assert mode == ('streaming' if streaming else 'ordinary')
     assert {tool['name'] for tool in tools} == expected
-    assert json.loads(messages[0]['content']) == (context if approved else {'mission': context['mission'], 'scope_approved': False})
-    if approved:
+    payload = json.loads(messages[0]['content'])
+    if approved and auto and not domains:
+        assert payload == {k:context[k] for k in ('mission','source_candidates','update_since')}
+        assert len(system) < 1800
+    else:
+        assert payload == (context if approved else {'mission': context['mission'], 'scope_approved': False})
+    if approved and domains:
         assert 'known_findings' in system and 'related_finding_id' in system
 
 
