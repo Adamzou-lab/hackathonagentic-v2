@@ -8,6 +8,7 @@
     const parts = [];
     if (demo) parts.push("Démonstration simulée · aucune consommation API réelle.");
     if (reuse === "recent_completed") parts.push("Veille réutilisée : aucun nouvel appel IA. Bilan de la mission d’origine.");
+    else if (reuse === "recent_partial") parts.push("Résultats partiels récents réutilisés : aucun nouvel appel IA. Vous pouvez compléter la veille depuis Mes veilles.");
     else if (reuse === "already_running") parts.push("Mission déjà en cours : aucun second lancement. Sa consommation continue d’évoluer.");
     if (!u) parts.push("Mesures de tokens indisponibles pour cette mission.");
     else if (!u.tokens_complete) parts.push("Consommation incomplète : un appel est en cours ou sa mesure n’a pas été reçue.");

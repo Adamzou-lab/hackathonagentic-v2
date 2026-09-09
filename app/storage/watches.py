@@ -2,6 +2,7 @@
 import hashlib
 import json
 import re
+import time
 import unicodedata
 from difflib import SequenceMatcher
 
@@ -143,6 +144,20 @@ class WatchStore:
                 break
             compact.append(item);total += size
         completed = next((r for r in watch['runs'] if r['status']=='completed' and not r['partial']),None)
+        latest = self.watch_runs(wid)[-1]
+        ended_epoch = latest.get('ended_epoch') or 0
+        reusable_partial = (latest.get('status') in {'budget_exhausted','deadline_reached','stopped'}
+                            and time.time() - ended_epoch <= 21600)
+        cached_pages = latest.get('pages', {}) if reusable_partial else {}
+        resume = {}
+        if cached_pages:
+            resume['cached_pages'] = dict(list(cached_pages.items())[-2:])
+            resume['domains'] = latest.get('domains', [])
+            resume['selected_sources'] = latest.get('selected_sources', [])
+            resume['source_candidates'] = latest.get('source_candidates', [])
+            resume['discovery_attempted'] = latest.get('discovery_attempted', False)
+            resume['sources'] = [source for source in latest.get('sources', [])
+                                 if source.get('source_id') in resume['cached_pages']]
         return {'known_findings':compact,'known_findings_truncated':len(compact)<len(findings),
                 'update_since':completed['ended_at'] if completed else None,
-                'base_mission_id':watch['latest_mission_id']}
+                'base_mission_id':watch['latest_mission_id'], **resume}

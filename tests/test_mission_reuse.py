@@ -48,6 +48,58 @@ def test_unsuitable_missions_not_reused(tmp_path,status,age,errors):
     try: assert store.reusable(MissionInput(**REQUEST)) is None
     finally: store.db.close()
 
+
+@pytest.mark.parametrize('status',['stopped','budget_exhausted','deadline_reached'])
+def test_recent_partial_with_finding_is_reused_for_free(tmp_path, status):
+    path = tmp_path/'db'; mid = seed(path, status)
+    store = Store(str(path))
+    try:
+        data = store.get(mid)
+        data['findings'] = [{'finding_id':'one','title':'Constat conservé',
+                             'summary':'Un fait étayé reste disponible.',
+                             'developer_impact':'À consulter.', 'evidence':[],
+                             'change':'new'}]
+        store.save(data,'fixture_finding',{})
+    finally:
+        store.db.close()
+    with TestClient(create_app(db_path=str(path),access_token=TOKEN,
+                               provider=NeverCalled())) as client:
+        response = client.post('/api/missions',headers=AUTH,json=REQUEST)
+        assert response.status_code == 200
+        assert response.json()['id'] == mid
+        assert response.json()['reuse']['reason'] == 'recent_partial'
+        assert not client.app.state.engine.active()
+
+
+def test_completing_partial_reuses_recent_pages_and_selected_domains(tmp_path):
+    path = tmp_path/'db'
+    store = Store(str(path))
+    request = MissionInput(subject='Veille automatique', auto_sources=True,
+                           action_budget=20, duration_minutes=10)
+    try:
+        old = store.create(request)
+        data = store.get(old)
+        page = {'source_id':'source','url':'https://example.com/news',
+                'title':'Annonce','text':'Un fait documenté.', 'published_at':None,
+                'retrieved_at':'2026-09-09T10:00:00+00:00','status':'ok'}
+        data.update(status='budget_exhausted', ended_epoch=time.time(),
+                    ended_at='2026-09-09T10:01:00+00:00',
+                    domains=['example.com'], selected_sources=[{
+                        'domain':'example.com','url':page['url'],'reason':'Source primaire'}],
+                    source_candidates=[{'domain':'example.com','url':page['url']}],
+                    discovery_attempted=True, pages={'source':page},
+                    sources=[{key:value for key,value in page.items() if key!='text'}])
+        store.save(data,'finished',{'status':'budget_exhausted'})
+        fresh = store.create(request.model_copy(update={'force_refresh':True}))
+        resumed = store.get(fresh)
+        assert resumed['domains'] == ['example.com']
+        assert resumed['pages']['source']['text'] == 'Un fait documenté.'
+        assert resumed['selected_sources'][0]['domain'] == 'example.com'
+        assert any(event['kind']=='partial_context_reused'
+                   for event in store.events(fresh))
+    finally:
+        store.db.close()
+
 @pytest.mark.parametrize('change',[{'subject':'Veille Python'}, {'domains':['other.org']}, {'action_budget':4}, {'duration_minutes':2}])
 def test_distinct_parameters_not_merged(tmp_path,change):
     path=tmp_path/'db';seed(path);store=Store(str(path))

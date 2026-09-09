@@ -23,14 +23,14 @@ Chaque tentative produit aussi des événements de journal et consomme le budget
 | `HttpUrl` | Chaîne HTTPS soumise à validation côté serveur ; ce nom de type ne suffit pas à rendre une URL sûre. |
 | `SearchHit` | `url: HttpUrl`, `title: str`, `snippet: str`, `published_at: str | null`. La date annoncée par la recherche reste non vérifiée ; un extrait de recherche n'est pas une preuve suffisante pour le rapport. |
 | `Page` | `source_id: str`, `requested_url: HttpUrl`, `final_url: HttpUrl`, `title: str`, `text: str`, `published_at: str | null`, `retrieved_at: str`, `content_hash: str`, `truncated: bool`. Identifiant, horodatage UTC et empreinte produits par le programme ; date de publication extraite, sans garantie de vérité. |
-| `Evidence` | `source_id: str`, `quote: str`. Référence à une page réellement lue pendant cette exécution et court extrait vérifiable dans la copie conservée. |
+| `Evidence` | `source_id: str`, `passage_id: str`. Référence à un extrait exact d'une page réellement lue ; le serveur résout le texte depuis la copie conservée. |
 | `FindingDraft` | `title: str`, `summary: str`, `developer_impact: str`, `evidence: list[Evidence]`, `event_date: str | null`, `date_status: DateStatus`, `confidence: Confidence`, `caveats: list[str]`. Au moins une preuve ; une date inconnue n'est pas remplacée par la date de consultation. |
 | `DateStatus` | Une valeur parmi `in_window`, `outside_window`, `unknown`. Fenêtre de sept jours calculée à partir du démarrage de la mission ; la classification reste à recouper avec les preuves. |
 | `Confidence` | Une valeur parmi `single_source`, `corroborated`, `conflicting`. Deux pages recopiant la même annonce ne constituent pas deux confirmations indépendantes. |
 | `SavedFinding` | `finding_id: str`, `disposition: SaveDisposition`. Identifiant stable et résultat de la déduplication. |
 | `SaveDisposition` | Une valeur parmi `created`, `already_saved`. |
 | `ToolError` | `code: ErrorCode`, `message: str`, `retryable: bool`. Message nettoyé, sans secret ni contenu HTML exécutable. |
-| `ErrorCode` | Une valeur parmi `invalid_input`, `blocked_url`, `timeout`, `unavailable`, `rate_limited`, `too_large`, `unsupported_content`, `invalid_evidence`, `idempotency_conflict`, `storage_failure`, `cancelled`, `budget_exhausted`. |
+| `ErrorCode` | Une valeur parmi `invalid_input`, `blocked_url`, `timeout`, `unavailable`, `rate_limited`, `too_large`, `unsupported_content`, `invalid_evidence`, `unsupported_claim`, `idempotency_conflict`, `storage_failure`, `cancelled`, `budget_exhausted`. |
 
 ## Contrats et limites proposés pour le MVP
 
@@ -40,7 +40,7 @@ Ces valeurs forment une base de conception à harmoniser avec `SPEC.md` et `MENA
 - **Recherche** : requête de 1 à 500 caractères, `k` entre 1 et 5. Le serveur restreint la recherche aux domaines autorisés et filtre aussi les résultats ; le filtre du prestataire n'est pas une garantie. Fournisseur de recherche : Anthropic web_search.
 - **Lecture** : HTTPS public, sans compte ni cookie de session utilisateur ; refus des adresses locales, privées, réservées et des URL contenant des identifiants. Contrôler le domaine, la résolution réseau et la destination réellement jointe, à chaque redirection (3 maximum), pour éviter les accès au réseau interne. Limites proposées : 15 secondes par appel, 1 Mio reçu et 30 000 caractères de texte conservé par page. Pas d'exécution de JavaScript, de téléchargement arbitraire ou de navigation authentifiée ; page non exploitable = erreur explicite.
 - **Contenus externes** : texte traité comme donnée non fiable. Les consignes trouvées dans une page ne changent ni la mission ni les permissions. Le rapport est rendu comme texte échappé, pas comme HTML fourni par un site.
-- **Constats** : valider les types, les tailles et la présence effective des extraits dans les pages enregistrées. Cette vérification prouve la provenance, pas la véracité de l'affirmation. Les incertitudes et contradictions restent visibles ; les dates inconnues ne sont pas présentées comme des nouveautés confirmées de la semaine.
+- **Constats** : valider les types, les tailles et la présence effective des extraits dans les pages enregistrées. Un second appel modèle borné vérifie ensuite que ces extraits soutiennent réellement les affirmations. Il rejette en cas de contradiction, d'ambiguïté ou de soutien insuffisant ; cette étape réduit les inventions sans certifier la vérité de la source. Les incertitudes et contradictions restent visibles ; les dates inconnues ne sont pas présentées comme des nouveautés confirmées de la semaine.
 - **Idempotence** : portée de la clé = exécution courante. Une même clé avec le même contenu rend le résultat existant ; un contenu différent rend `idempotency_conflict`. Une contrainte persistante empêche les doubles écritures. La déduplication sémantique des annonces reste une tâche distincte de comparaison des preuves.
 
 ## Contrôles du programme — pas des outils du modèle
@@ -61,7 +61,7 @@ La reprise après panne au point exact est un bonus, pas une promesse du MVP. Re
 
 - L'ordre d'arrêt est un état **persisté en base**, relu avant chaque appel et chaque tour de boucle, y compris après redémarrage ; il ne repose pas uniquement sur un signal en mémoire.
 - Deux tentatives maximum par URL source en échec pour toute l'exécution : rappeler le même outil plus tard ne remet pas le compteur à zéro. Les reprises restent réservées aux erreurs transitoires et consomment le budget.
-- La lecture du MVP porte sur du HTML textuel uniquement, sans PDF ni images. Le programme vérifie les règles d'accès de `robots.txt` et borne le débit par domaine ; une indisponibilité de ces règles suspend la source, sans contournement. Les requêtes de contrôle sont elles-mêmes tracées, bornées et comptées dans un plafond réseau distinct proposé à 200 requêtes, redirections comprises.
+- La lecture porte sur du HTML textuel, RSS ou Atom, sans PDF ni images. Le programme vérifie les règles d'accès de `robots.txt` et borne le débit par domaine ; une indisponibilité de ces règles suspend la source, sans contournement. Chaque redirection est revérifiée avant d'être suivie. Les requêtes de contrôle sont elles-mêmes tracées, bornées et comptées dans un plafond réseau distinct proposé à 200 requêtes, redirections comprises.
 - Une actualisation peut recevoir un contexte factuel borné (20 constats, 12 000 caractères), versionné avec les identifiants des preuves et de la mission précédente. Les anciens journaux et les pages complètes ne sont pas réinjectés. Les constats antérieurs restent des données non fiables.
 
 ## À savoir expliquer au checkpoint

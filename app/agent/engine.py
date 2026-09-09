@@ -280,6 +280,44 @@ class Engine:
         self.store.save(d, 'finding_unchanged' if change == 'duplicate' else ('finding_updated' if change == 'update' else 'finding_saved'), result)
         return result
 
+    def verification_payload(self, mid, args):
+        """Résout les références exactes sans enregistrer le constat proposé."""
+        d = self.guard(mid)
+        finding = args.finding.model_dump()
+        evidence = []
+        for reference in finding['evidence']:
+            page = d['pages'].get(reference['source_id'])
+            passage_id = reference.get('passage_id')
+            quote = reference.get('quote')
+            if passage_id and page:
+                quote = next((item['quote'] for item in passages(page)
+                              if item['passage_id'] == passage_id), None)
+            if not page or not quote or quote not in page['text']:
+                raise ToolFailure('invalid_evidence')
+            evidence.append({'quote':quote, 'source_title':page.get('title',''),
+                             'published_at':page.get('published_at')})
+        return finding, evidence
+
+    async def verify_finding(self, mid, args):
+        verifier = getattr(self.provider, 'verify_finding', None)
+        if not getattr(self.provider, 'semantic_verification', False) or not callable(verifier):
+            return
+        finding, evidence = self.verification_payload(mid, args)
+        self.reserve(mid, 'model_calls_used', 60, 'model_started')
+        self.reserve(mid, 'network_requests_used', 200, 'network_started')
+        approved, code, usage = await self.call(
+            mid, verifier(finding, evidence), timeout=30,
+            dependency='model_provider', operation='verify_finding')
+        d = self.guard(mid)
+        self.model_finished(d, usage, proposed_action='verify_finding')
+        if not approved:
+            self.store.save(d, 'finding_rejected', {
+                'code':code, 'title':finding.get('title','')[:200]})
+            raise ToolFailure('unsupported_claim')
+        self.store.save(d, 'finding_verified', {
+            'title':finding.get('title','')[:200],
+            'evidence_count':len(evidence)})
+
     async def execute(self, mid, name, raw, reader):
         if name in self.disabled_tools:
             raise ToolFailure('tool_disabled_for_test')
@@ -374,7 +412,9 @@ class Engine:
             self.store.save(d, 'page_saved', {'source_id':page['source_id'], 'url':url})
             return page
         if name == 'save_finding':
-            return self.save_finding(mid, SaveInput.model_validate(raw))
+            args = SaveInput.model_validate(raw)
+            await self.verify_finding(mid, args)
+            return self.save_finding(mid, args)
         raise ToolFailure('unknown_tool')
 
     async def heartbeat(self, mid, owner):

@@ -12,7 +12,7 @@ def test_reserve_uses_decisions_not_large_native_search_results():
         return {'kind':'model_finished','data':{'proposed_action':action,
             'usage':{'input_tokens':n,'output_tokens':100}}}
     events = [event(14000), event(2000,'read_page'), event(2200,'save_finding')]
-    assert finalization_token_reserve(events,40000) == 4096
+    assert finalization_token_reserve(events,40000) == 8192
     assert finalization_token_reserve([event(14000)],40000) == 12000
     assert finalization_token_reserve([event(9000,'save_finding')],40000) > 11000
 
@@ -120,4 +120,86 @@ def test_expensive_second_native_search_is_not_sent(tmp_path):
             assert s.get(mid)['web_search_calls_used']==0
             assert s.events(mid)[-1]['kind']=='web_search_skipped'
         finally: s.db.close()
+    asyncio.run(run())
+
+
+def test_semantic_verifier_rejects_claim_before_persistence(tmp_path):
+    import pytest
+    from app.agent.evidence import passages
+    from app.agent.web import ToolFailure
+    class Provider:
+        semantic_verification = True
+        model = 'test-model'
+        async def verify_finding(self, finding, evidence):
+            assert finding['summary'] == 'Le produit est gratuit.'
+            assert evidence[0]['quote'] == 'Le produit coûte dix euros.'
+            return False, 'contradicted', {'input_tokens':20,'output_tokens':2}
+    async def run():
+        store = Store(tmp_path/'db')
+        try:
+            mid = store.create(MissionInput(subject='Tarif', domains=['example.com']))
+            page = {'source_id':'source','url':'https://example.com/tarif',
+                    'title':'Tarif','text':'Le produit coûte dix euros.',
+                    'published_at':None,'status':'ok'}
+            data = store.get(mid); data['pages']={'source':page}; store.save(data,'fixture',{})
+            pid = passages(page)[0]['passage_id']
+            raw = {'idempotency_key':'claim','finding':{
+                'title':'Tarif','summary':'Le produit est gratuit.',
+                'developer_impact':'Vérifier le prix.',
+                'evidence':[{'source_id':'source','passage_id':pid}]}}
+            with pytest.raises(ToolFailure, match='unsupported_claim'):
+                await Engine(store,Provider()).execute(mid,'save_finding',raw,None)
+            assert store.get(mid)['findings'] == []
+            rejected = [event for event in store.events(mid)
+                        if event['kind']=='finding_rejected']
+            assert rejected[0]['data']['code'] == 'contradicted'
+        finally:
+            store.db.close()
+    asyncio.run(run())
+
+
+def test_verifier_protocol_is_bounded_and_fail_closed():
+    class Provider(AnthropicProvider):
+        async def message(self, messages, system, tools):
+            payload = json.loads(messages[0]['content'])
+            assert set(payload) == {'finding','evidence'}
+            assert set(payload['finding']) == {
+                'title','summary','developer_impact','event_date',
+                'date_status','confidence','caveats'}
+            assert {tool['name'] for tool in tools} == {
+                'approve_finding','reject_finding'}
+            return {'content':[{'type':'tool_use','name':'reject_finding',
+                                'input':{'code':'unsupported'}}],
+                    'usage':{'input_tokens':4,'output_tokens':1}}
+    approved, code, usage = asyncio.run(Provider('fake','fake').verify_finding(
+        {'title':'Titre','summary':'Résumé','developer_impact':'Impact'},
+        [{'quote':'Preuve exacte'}]))
+    assert not approved and code == 'unsupported' and usage['input_tokens'] == 4
+
+
+def test_semantic_verifier_approval_is_visible_in_journal(tmp_path):
+    from app.agent.evidence import passages
+    class Provider:
+        semantic_verification = True
+        model = 'test-model'
+        async def verify_finding(self, finding, evidence):
+            return True, None, {'input_tokens':20,'output_tokens':2}
+    async def run():
+        store = Store(tmp_path/'db')
+        try:
+            mid = store.create(MissionInput(subject='Tarif', domains=['example.com']))
+            page = {'source_id':'source','url':'https://example.com/tarif',
+                    'title':'Tarif','text':'Le produit coûte dix euros.',
+                    'published_at':None,'status':'ok'}
+            data = store.get(mid); data['pages']={'source':page}; store.save(data,'fixture',{})
+            pid = passages(page)[0]['passage_id']
+            raw = {'idempotency_key':'claim','finding':{
+                'title':'Tarif','summary':'Le produit coûte dix euros.',
+                'developer_impact':'Prévoir ce montant.',
+                'evidence':[{'source_id':'source','passage_id':pid}]}}
+            await Engine(store,Provider()).execute(mid,'save_finding',raw,None)
+            kinds = [event['kind'] for event in store.events(mid)]
+            assert kinds.index('finding_verified') < kinds.index('finding_saved')
+        finally:
+            store.db.close()
     asyncio.run(run())

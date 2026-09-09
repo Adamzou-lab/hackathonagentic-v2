@@ -9,11 +9,11 @@ Agent de veille web d’Adam et Panaki. Choisissez un sujet, votre budget et des
 ### 1. Télécharger
 
 ```sh
-git clone --branch adam --single-branch https://github.com/Adamzou-lab/hackathonagentic-v2.git
+git clone --branch main --single-branch https://github.com/Adamzou-lab/hackathonagentic-v2.git
 cd hackathonagentic-v2
 ```
 
-La version de travail intégrée est sur **adam**. Si le dépôt est privé, votre compte GitHub doit y avoir accès.
+La version intégrée et déployable est sur **main**. Si le dépôt est privé, votre compte GitHub doit y avoir accès.
 
 ### 2. Lancer
 

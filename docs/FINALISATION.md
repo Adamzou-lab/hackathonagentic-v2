@@ -70,7 +70,8 @@ L'animation respecte la préférence de réduction des mouvements.
 
 Le plafond total de tokens ne change pas. La réserve de finalisation est désormais
 calculée à partir des trois dernières décisions mesurées : maximum de leur taille,
-multiplié par 1,25, plus 1 024 tokens, avec un minimum de 4 096. Sans décision mesurée,
+multiplié par 1,5, plus 4 096 tokens, avec un minimum de 8 192. Elle couvre la
+proposition finale et sa vérification sémantique. Sans décision mesurée,
 la réserve historique de 30 % est conservée. Le contenu des recherches web natives
 n'entre pas dans cette estimation d'une décision. La réserve exacte figure dans
 `finalization_started`. Ce calcul reste une estimation ; le contrôle entre appels
@@ -95,7 +96,7 @@ Le format imbriqué de `save_finding` est montré explicitement. Une relance apr
 Les résultats déjà sauvegardés restent disponibles et partiels, les erreurs restent
 journalisées. L'interface distingue limite de consommation, d'étapes et de temps.
 
-Validation : 361 tests Python, 14 tests frontend, évaluation automatique 10/10.
+Validation : 371 tests Python, 14 tests frontend, évaluation automatique 10/10.
 Ces réductions de contexte ne garantissent pas un prix par sujet ni une durée de
 10 minutes : celle-ci reste un maximum, indépendant des plafonds de consommation.
 
@@ -113,3 +114,24 @@ coût total : le premier a conservé un constat en 43 113 tokens, le second a at
 Le test automatisé de non-régression vérifie que ce type d'appel n'est plus envoyé.
 Aucun troisième essai payant n'a été lancé ; le gain réel global reste à mesurer
 sur un ensemble comparable de sujets. Ne pas annoncer un pourcentage d'économie.
+
+## Fiabilité des constats et reprise économique — 9 septembre 2026
+
+Avant toute écriture, un second appel court vérifie que les affirmations du constat
+sont bien soutenues par les extraits exacts. Une approbation produit l'événement
+`finding_verified`, puis seulement `finding_saved`. Un rejet produit
+`finding_rejected` et `unsupported_claim` ; aucun constat n'est alors publié.
+Cette vérification est comptée dans les appels, les tokens et le coût affiché.
+Un contrôle réel volontairement contradictoire avec `claude-haiku-4-5` a bien été
+rejeté (`contradicted`) : 1 014 tokens d'entrée, 30 de sortie, aucun appel web,
+coût estimé 0,001164 $US.
+
+Une demande strictement identique réutilise gratuitement pendant 24 heures une
+veille terminée ou une veille partielle contenant déjà au moins un constat. Le
+motif `recent_partial` est affiché. Le bouton « Compléter cette veille » crée une
+nouvelle exécution et, pendant six heures, reprend jusqu'à deux pages déjà lues et
+les sources sélectionnées : ces lectures ne sont ni répétées ni refacturées.
+
+Le lecteur accepte désormais HTML, RSS et Atom, extrait davantage de dates de
+publication et suit jusqu'à trois redirections seulement après nouvelle validation
+HTTPS, domaine, DNS public et robots.txt de chaque destination.

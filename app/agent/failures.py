@@ -17,7 +17,7 @@ def failure_code(exc, dependency='tool'):
             'timeout', 'unavailable', 'rate_limited', 'blocked_url', 'invalid_input',
             'robots_unavailable', 'robots_denied', 'too_large', 'redirect_limit',
             'document_redirect_rejected', 'unsupported_content', 'attempts_exhausted',
-            'invalid_evidence', 'idempotency_conflict', 'unknown_related_finding',
+            'invalid_evidence', 'unsupported_claim', 'idempotency_conflict', 'unknown_related_finding',
             'related_finding_superseded', 'tool_disabled_for_test', 'unknown_tool',
             'sources_not_selected', 'source_discovery_not_allowed',
             'source_selection_not_allowed', 'source_not_discovered', 'source_dns_unavailable',

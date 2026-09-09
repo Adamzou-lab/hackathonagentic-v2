@@ -122,7 +122,10 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
         existing = app.state.store.reusable(request)
         if existing:
             state = snapshot(existing)
-            state['reuse'] = {'reason': 'recent_completed' if state['status'] == 'completed' else 'already_running',
+            reason = ('recent_completed' if state['status'] == 'completed' else
+                      'already_running' if state['status'] in {'pending','running'} else
+                      'recent_partial')
+            state['reuse'] = {'reason': reason,
                              'window_hours': 24}
             return JSONResponse(state, status_code=200)
         if request.watch_id:

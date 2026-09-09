@@ -87,6 +87,9 @@
     finalization_without_evidence: "Aucune preuve exploitable",
     finalization_tool_blocked: "Réserve de finalisation protégée",
     finding_target_reached: "Objectif de la veille atteint",
+    finding_rejected: "Constat rejeté : preuves insuffisantes",
+    finding_verified: "Constat vérifié sur ses preuves",
+    partial_context_reused: "Pages récentes réutilisées",
     token_budget_exhausted: "Seuil de tokens atteint",
     web_search_skipped: "Nouvelle recherche évitée pour préserver la synthèse",
     finalization_retry_skipped: "Relance évitée : budget restant insuffisant",
@@ -1094,7 +1097,10 @@
         ),
       );
       const buttons = el("div", "lk-watch-actions");
-      const refresh = action("Actualiser cette veille", () =>
+      const refreshLabel = watch.status === "completed"
+        ? "Actualiser cette veille"
+        : "Compléter cette veille";
+      const refresh = action(refreshLabel, () =>
         refreshWatch(watch, refresh),
       );
       buttons.append(
@@ -1110,7 +1116,9 @@
         el(
           "p",
           "lk-accesshelp",
-          "Actualiser recherche les nouveautés et peut consommer du crédit API. Les résultats déjà connus sont conservés.",
+          watch.status === "completed"
+            ? "Actualiser recherche les nouveautés et peut consommer du crédit API. Les résultats déjà connus sont conservés."
+            : "Compléter reprend les résultats et les pages récentes déjà disponibles. Une nouvelle recherche peut consommer du crédit API.",
         ),
       );
       const sources = el("div", "lk-watch-domains");
@@ -1275,6 +1283,8 @@
       notice(
         state.reuse.reason === "recent_completed"
           ? "Cette veille a déjà été réalisée au cours des dernières 24 heures. Résultats existants réutilisés : aucun nouvel appel au modèle."
+          : state.reuse.reason === "recent_partial"
+            ? "Des résultats partiels récents existent déjà. Ils sont affichés sans nouvel appel au modèle. Vous pouvez compléter la veille depuis Mes veilles."
           : "Cette veille est déjà en cours. Vous retrouvez la même mission, sans nouveau lancement.",
       );
     q("#lk-connection").textContent = terminal.has(state.status)

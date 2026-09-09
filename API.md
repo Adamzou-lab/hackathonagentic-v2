@@ -76,9 +76,9 @@ Erreurs : `{"detail":"message"}` pour 401/404/503 ; certains 409 de rapprochemen
 
 ## Limites du socle
 
-Pas de garantie de vérité ou d'exhaustivité, pas de reprise automatique après panne, pas de détection exhaustive d'injection. Date de publication éventuellement inconnue. Les pages bloquées, privées, trop grosses ou non HTML sont refusées. Une synthèse à l'arrêt est assemblée sans nouvel appel au modèle. Plafonds fixes : 60 appels modèle, 200 requêtes réseau locales, 2 tentatives par URL et contexte modèle borné. Le moteur borne les appels modèle à 45 secondes et les lectures/DNS à 15 secondes, sous la durée restante de mission ; les transports ont aussi leurs propres délais, parfois plus courts. La lecture des sources respecte robots.txt de façon conservatrice ; refus si ses règles ne sont pas récupérables (404 signifie absence de règles). Les redirections des documents sont refusées dans ce socle avant de les suivre ; utiliser les URL finales des résultats. Seules les redirections de robots.txt sont suivies avec contrôle de domaine et de résolution réseau.
+Pas de garantie de vérité ou d'exhaustivité, pas de reprise automatique après panne, pas de détection exhaustive d'injection. Date de publication éventuellement inconnue. Les pages bloquées, privées, trop grosses ou hors formats HTML/RSS/Atom sont refusées. Une synthèse à l'arrêt est assemblée sans nouvel appel au modèle. Plafonds fixes : 60 appels modèle, 200 requêtes réseau locales, 2 tentatives par URL et contexte modèle borné. Le moteur borne les appels modèle à 45 secondes et les lectures/DNS à 15 secondes, sous la durée restante de mission ; les transports ont aussi leurs propres délais, parfois plus courts. La lecture des sources respecte robots.txt de façon conservatrice ; refus si ses règles ne sont pas récupérables (404 signifie absence de règles). Les redirections sont limitées et revérifiées avant chaque suivi : HTTPS, domaine autorisé, DNS public et robots.txt de la destination.
 
-La qualification de source « officielle » reste le choix de l'opérateur dans la liste de domaines ; le serveur ne peut pas l'attester automatiquement. Tests automatisés avec fournisseurs substitués : ne pas les présenter comme une validation réelle de la clé Anthropic ou comme une démonstration de 30 minutes.
+La qualification de source « officielle » reste un choix faillible : elle vient de l'opérateur en mode manuel ou du modèle parmi des candidats réels en mode automatique ; le serveur ne peut pas l'attester. Tests automatisés avec fournisseurs substitués : ne pas les présenter comme une validation réelle de la clé Anthropic ou comme une démonstration de 30 minutes.
 
 ## Flux progressif (palier 3)
 
@@ -165,8 +165,9 @@ Le polling d'`/api/missions/{id}` reste valable et sert de repli : le flux n'est
 ### Réutilisation d'une veille récente
 
 `POST /api/missions` renvoie `200` et la mission existante si une demande identique
-est déjà en cours ou s'est terminée sans erreur depuis moins de 24 heures.
-L'objet `reuse` indique `reason: recent_completed | already_running` et
+est déjà en cours, s'est terminée sans erreur, ou possède un résultat partiel utile
+depuis moins de 24 heures.
+L'objet `reuse` indique `reason: recent_completed | recent_partial | already_running` et
 `window_hours: 24`. Aucun nouvel appel au modèle ni nouvelle mission n'est créé.
 Un nouveau lancement conserve la réponse `202`.
 
@@ -174,8 +175,9 @@ Identité : sujet normalisé Unicode NFC, casse et espaces ignorés, même ensem
 de domaines autorisés, même budget d'actions et même durée. Les paraphrases ne
 sont pas fusionnées. Les résultats et leur date originale sont conservés ; les
 nouvelles publications intervenues depuis ne sont pas recherchées dans cette
-fenêtre. Les refus, erreurs, arrêts et résultats limités par budget/durée ne sont
-pas réutilisés. La recherche de doublons est persistante en SQLite et protégée
+fenêtre. Les résultats limités par budget, durée ou arrêt sont réutilisés seulement
+s'ils contiennent au moins un constat ; le motif est `recent_partial`. Les refus et
+les résultats vides ne sont pas réutilisés. La recherche de doublons est persistante en SQLite et protégée
 par la même authentification que les missions (un espace opérateur partagé).
 
 ## Fiches de veille, actualisations et sources automatiques
@@ -208,18 +210,24 @@ est une suggestion approximative, pas une preuve d'identité sémantique.
 Une actualisation reçoit de nouveaux compteurs et une nouvelle date. `update_since`
 correspond à la dernière exécution terminée sans erreur ; `known_findings` contient
 au plus 20 constats et 12 000 caractères avec références, sans anciens journaux ni
-pages complètes. Une réduction des domaines manuels retire aussi le contexte issu
+pages complètes. Pour compléter une exécution partielle de moins de six heures,
+jusqu'à deux pages déjà lues et les sources sélectionnées sont reprises sans nouvelle
+lecture. Une réduction des domaines manuels retire aussi le contexte issu
 d'autres domaines. La découverte automatique refiltre ce contexte après sélection.
 
 `save_finding` accepte `change: new | update | duplicate` et `related_finding_id`
 (entry_id connu, requis pour update/duplicate). Les preuves doivent être relues
-dans la nouvelle exécution. Les doublons reconnus ne grossissent pas la fiche ;
-une évolution conserve l'historique. Le rapprochement sémantique reste imparfait.
+dans la nouvelle exécution. Les doublons reconnus ne grossissent pas la fiche. En
+production, un second appel modèle borné vérifie le soutien sémantique des
+affirmations par les extraits exacts avant l'écriture ; approbation et rejet sont
+journalisés. Un rejet ne publie rien. Une évolution conserve l'historique. Le
+rapprochement sémantique reste imparfait.
 
 Actions supplémentaires : `discover_sources({query})` renvoie jusqu'à 10 candidats
 structurés d'une recherche réelle ; `select_sources({sources:[{domain,reason}]})`
 autorise uniquement de 1 à 5 candidats, DNS public vérifié. Le lecteur revérifie le
-DNS à la connexion et respecte robots.txt. Aucun outil de lecture n'est autorisé
+DNS à la connexion et respecte robots.txt, y compris après chaque redirection
+autorisée. Les formats HTML, RSS et Atom sont acceptés. Aucun outil de lecture n'est autorisé
 avant sélection. Une erreur de découverte termine la mission avec sa trace.
 Cette préparation consomme deux actions et quatre appels modèle avant la première
 recherche documentaire. Elle reste dans le budget global, sans appels cachés.

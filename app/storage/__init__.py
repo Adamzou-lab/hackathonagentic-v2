@@ -93,16 +93,21 @@ class Store(WatchStore):
         rows = self.db.execute(
             "SELECT data FROM missions WHERE "
             "json_extract(data, '$.status') IN ('pending', 'running') OR "
-            "(json_extract(data, '$.status') = 'completed' AND "
+            "(json_extract(data, '$.status') IN "
+            "('completed','budget_exhausted','deadline_reached','stopped') AND "
             "json_extract(data, '$.ended_epoch') >= ?) "
             "ORDER BY json_extract(data, '$.started_epoch') DESC", (cutoff,))
         for (encoded,) in rows:
             data = json.loads(encoded)
             if request.watch_id and self.watch_id_for(data['id']) != request.watch_id:
                 continue
-            if request.force_refresh and data['status'] == 'completed':
+            if request.force_refresh and data['status'] in TERMINAL:
                 continue
-            if data.get('had_errors') or self.request_identity(data) != wanted:
+            useful_partial = (data['status'] in {'budget_exhausted','deadline_reached','stopped'}
+                              and bool(data.get('findings')))
+            if ((data.get('had_errors') and not useful_partial) or
+                    (data['status'] not in {'pending','running','completed'} and not useful_partial) or
+                    self.request_identity(data) != wanted):
                 continue
             return data['id']
         return None
@@ -111,14 +116,19 @@ class Store(WatchStore):
         mid = uuid.uuid4().hex
         wid = watch_id or request.watch_id or self.exact_watch(request)
         previous = self.prior_context(wid, request.domains, request.auto_sources) if wid else {}
+        cached_pages = previous.pop('cached_pages', {})
+        cached_sources = previous.pop('sources', [])
         wid = wid or mid
         inputs = request.model_dump(exclude={'watch_id','force_refresh','allow_new'})
+        if cached_pages and previous.get('domains'):
+            inputs['domains'] = previous.pop('domains')
         data = dict(id=mid, watch_id=wid, **inputs, **previous, status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
                     actions_used=0, model_calls_used=0, network_requests_used=0, web_search_calls_used=0,
                     last_request_cost=None, total_estimated_cost_usd=0,
                     **limits(request.action_budget, request.auto_sources),
-                    current_action=None, current_operation=None, error=None, sources=[], findings=[], pages={},
+                    current_action=None, current_operation=None, error=None,
+                    sources=cached_sources, findings=[], pages=cached_pages,
                     keys={}, attempts={}, had_errors=False)
         self.save(data, 'created', {'request': request.model_dump()})
         with self.db:
@@ -128,6 +138,10 @@ class Store(WatchStore):
             self.save(data, 'enrichment_prepared', {'base_mission_id':previous['base_mission_id'],
                 'known_findings':previous['known_findings'], 'known_findings_count':len(previous['known_findings']),
                 'known_findings_truncated':previous['known_findings_truncated'], 'update_since':previous['update_since']})
+        if cached_pages:
+            self.save(data, 'partial_context_reused', {
+                'base_mission_id':previous.get('base_mission_id'),
+                'pages_count':len(cached_pages)})
         return mid
 
     @mission_context

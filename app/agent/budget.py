@@ -40,8 +40,8 @@ def finalization_token_reserve(events, ceiling):
         measured.append(observed_tokens([event]))
     if not measured:
         return int(ceiling * .30)
-    # Output/schema margin, with a minimum for a cited finding. No bigger total budget.
-    return min(ceiling, max(4096, int(max(measured[-3:]) * 1.25) + 1024))
+    # One final proposal plus its semantic verification. No bigger total budget.
+    return min(ceiling, max(8192, int(max(measured[-3:]) * 1.5) + 4096))
 
 
 def additional_web_search_fits(events, ceiling):
