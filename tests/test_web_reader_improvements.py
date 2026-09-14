@@ -21,7 +21,8 @@ def test_reads_rss_and_atom_without_external_parser():
       <pubDate>Wed, 09 Sep 2026 10:00:00 GMT</pubDate></item></channel></rss>'''
     title, content, published = WebReader.feed_content(rss, 'https://example.com/feed')
     assert title == 'Versions'
-    assert content == 'Version 2 — Nouveau moteur.'
+    assert 'Version 2' in content and 'Nouveau moteur.' in content
+    assert 'Wed, 09 Sep 2026' in content
     assert published.startswith('Wed, 09 Sep 2026')
 
 

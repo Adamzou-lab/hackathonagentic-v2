@@ -133,6 +133,8 @@ class WebReader:
 
     @staticmethod
     def feed_content(text, final):
+        if '<!doctype' in text.lower() or '<!entity' in text.lower():
+            raise ToolFailure('unsupported_content')
         try:
             root = ET.fromstring(text)
         except ET.ParseError:
@@ -152,13 +154,14 @@ class WebReader:
                     if value and name not in fields:
                         fields[name] = BeautifulSoup(value, 'html.parser').get_text(' ', strip=True)
             chunks.append(' — '.join(fields[key] for key in
-                                      ('title','description','summary','content') if fields.get(key)))
+                                      ('title','published','updated','pubdate','description','summary','content') if fields.get(key)))
             published = published or next((fields.get(key) for key in
                                             ('published','updated','pubdate') if fields.get(key)), None)
         content = ' '.join(chunk for chunk in chunks if chunk)
         if not content:
             raise ToolFailure('unsupported_content')
-        return title[:200], content, published[:40] if published else None
+        # A feed aggregates different articles; no single date can certify them all.
+        return title[:200], content, published[:40] if published and len(entries) == 1 else None
 
     async def read(self, url, domains):
         url = check_url(url, domains)

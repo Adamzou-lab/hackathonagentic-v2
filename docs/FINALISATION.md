@@ -29,7 +29,7 @@ automatique comprise ; Standard en autorise deux, Approfondi quatre. Les liens
 déjà découverts restent disponibles pour lecture. Les tentatives réservées
 comptent même si le fournisseur échoue.
 
-Les seuils de tokens manuels sont 32 000 / 64 000 / 112 000. Le mode automatique
+Les seuils de tokens manuels sont 64 000 / 112 000 / 176 000. Le mode automatique
 ajoute 16 000 pour la découverte native, dont un essai a consommé près de
 14 000 tokens avant toute lecture. Ces seuils sont vérifiés entre les appels :
 le dernier peut les dépasser et un appel interrompu peut avoir un coût inconnu.

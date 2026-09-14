@@ -349,7 +349,7 @@ class AnthropicProvider:
                 raise ToolFailure('anthropic_invalid_response')
             return True, None, result.get('usage', {})
         code = raw.get('code') if isinstance(raw, dict) else None
-        if code not in {'unsupported','contradicted','ambiguous'}:
+        if not isinstance(raw, dict) or set(raw) != {'code'} or code not in {'unsupported','contradicted','ambiguous'}:
             raise ToolFailure('anthropic_invalid_response')
         return False, code, result.get('usage', {})
 

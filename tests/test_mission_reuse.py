@@ -81,7 +81,7 @@ def test_completing_partial_reuses_recent_pages_and_selected_domains(tmp_path):
         data = store.get(old)
         page = {'source_id':'source','url':'https://example.com/news',
                 'title':'Annonce','text':'Un fait documenté.', 'published_at':None,
-                'retrieved_at':'2026-09-09T10:00:00+00:00','status':'ok'}
+                'retrieved_at':time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime()),'status':'ok'}
         data.update(status='budget_exhausted', ended_epoch=time.time(),
                     ended_at='2026-09-09T10:01:00+00:00',
                     domains=['example.com'], selected_sources=[{

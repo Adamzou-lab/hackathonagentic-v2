@@ -99,7 +99,7 @@ def test_automatic_sources_keep_room_after_discovery(tmp_path):
     try:
         mid=store.create(MissionInput(subject='Veille',auto_sources=True,action_budget=10))
         d=store.get(mid)
-        assert d['token_budget']==48000 and d['finalization_reserve']==2
+        assert d['token_budget']==80000 and d['finalization_reserve']==2
         assert d['web_search_limit']==1
     finally:store.db.close()
 

@@ -1,7 +1,7 @@
 """Contrats publics et entrées d'outils strictement bornés."""
 import ipaddress
 import re
-from typing import Literal
+from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -82,7 +82,7 @@ class FindingDraft(StrictModel):
     event_date: str | None = Field(default=None, max_length=40)
     date_status: Literal['in_window', 'outside_window', 'unknown'] = 'unknown'
     confidence: Literal['single_source', 'corroborated', 'conflicting'] = 'single_source'
-    caveats: list[str] = Field(default_factory=list, max_length=5)
+    caveats: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=5)
 
 
 class SaveInput(StrictModel):

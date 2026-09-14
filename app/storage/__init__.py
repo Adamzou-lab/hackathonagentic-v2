@@ -115,13 +115,14 @@ class Store(WatchStore):
     def create(self, request, watch_id=None):
         mid = uuid.uuid4().hex
         wid = watch_id or request.watch_id or self.exact_watch(request)
-        previous = self.prior_context(wid, request.domains, request.auto_sources) if wid else {}
+        previous = self.prior_context(wid, request.domains, request.auto_sources, request.subject) if wid else {}
         cached_pages = previous.pop('cached_pages', {})
         cached_sources = previous.pop('sources', [])
         wid = wid or mid
         inputs = request.model_dump(exclude={'watch_id','force_refresh','allow_new'})
-        if cached_pages and previous.get('domains'):
-            inputs['domains'] = previous.pop('domains')
+        resumed_domains = previous.pop('domains', [])
+        if request.auto_sources and cached_pages and resumed_domains:
+            inputs['domains'] = resumed_domains
         data = dict(id=mid, watch_id=wid, **inputs, **previous, status='pending', created_at=now(),
                     ended_at=None, started_epoch=time.time(), ended_epoch=None,
                     actions_used=0, model_calls_used=0, network_requests_used=0, web_search_calls_used=0,

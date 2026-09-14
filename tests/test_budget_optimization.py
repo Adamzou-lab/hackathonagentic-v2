@@ -114,6 +114,7 @@ def test_expensive_second_native_search_is_not_sent(tmp_path):
         s=Store(tmp_path/'db')
         try:
             mid=s.create(MissionInput(subject='Veille',domains=['example.com'],action_budget=20))
+            d=s.get(mid); d['token_budget']=40000; s.save(d,'fixture_budget',{})
             for e in events: s.save(s.get(mid),e['kind'],e['data'])
             with pytest.raises(ToolFailure,match='web_search_budget_reserved'):
                 await Engine(s,Provider()).execute(mid,'search_web',{'query':'veille','k':2},None)

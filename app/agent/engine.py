@@ -225,6 +225,7 @@ class Engine:
                 ev['quote'] = next((p['quote'] for p in passages(page) if p['passage_id'] == pid), None)
             if not page or not ev['quote'] or ev['quote'] not in page['text']:
                 raise ToolFailure('invalid_evidence')
+            check_url(page['url'], d['domains'])
         # Dates are untrusted until backed by a publication field on a cited page.
         available = [d['pages'][e['source_id']].get('published_at') for e in finding['evidence']]
         date = finding['event_date']
@@ -294,6 +295,7 @@ class Engine:
                               if item['passage_id'] == passage_id), None)
             if not page or not quote or quote not in page['text']:
                 raise ToolFailure('invalid_evidence')
+            check_url(page['url'], d['domains'])
             evidence.append({'quote':quote, 'source_title':page.get('title',''),
                              'published_at':page.get('published_at')})
         return finding, evidence

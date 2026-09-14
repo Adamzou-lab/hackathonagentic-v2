@@ -16,6 +16,7 @@ def mission(tmp_path):
 
 def save(store, mid, hosts, confidence='corroborated', identical=False, forged=False):
     data = store.get(mid)
+    data['domains'] = list(dict.fromkeys(hosts))
     evidence = []
     for i, host in enumerate(hosts):
         text = 'Une annonce documentée numéro ' + str(0 if identical else i)
@@ -103,7 +104,7 @@ def test_token_threshold_prevents_next_model_reservation(mission):
     assert store.events(mid)[-1]['kind'] == 'token_budget_exhausted'
 
 
-@pytest.mark.parametrize('actions,limit', [(10,32000),(20,64000),(100,112000)])
+@pytest.mark.parametrize('actions,limit', [(10,64000),(20,112000),(100,176000)])
 def test_packs_have_explicit_token_limits(tmp_path, actions, limit):
     store = Store(tmp_path/'limits')
     try:

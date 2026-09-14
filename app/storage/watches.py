@@ -4,7 +4,9 @@ import json
 import re
 import time
 import unicodedata
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
+from urllib.parse import urlsplit
 
 
 def normalize_subject(text):
@@ -126,12 +128,11 @@ class WatchStore:
         candidates.sort(key=lambda x:(-x[1],x[0]['created_at']))
         return [c for c,_ in candidates[:3]]
 
-    def prior_context(self, wid, allowed_domains, auto_sources=False):
+    def prior_context(self, wid, allowed_domains, auto_sources=False, subject=None):
         watch = self.watch(wid)
         findings = watch['findings']
         compact, total = [], 0
         for f in reversed(findings):
-            from urllib.parse import urlsplit
             urls = [s['url'] for s in f['source_links']]
             # Une nouvelle limite manuelle exclut aussi le contexte issu d'autres sites.
             if not auto_sources and any(urlsplit(u).hostname not in allowed_domains for u in urls):
@@ -147,17 +148,37 @@ class WatchStore:
         latest = self.watch_runs(wid)[-1]
         ended_epoch = latest.get('ended_epoch') or 0
         reusable_partial = (latest.get('status') in {'budget_exhausted','deadline_reached','stopped'}
-                            and time.time() - ended_epoch <= 21600)
+                            and 0 <= time.time() - ended_epoch <= 21600
+                            and (subject is None or normalize_subject(subject) == normalize_subject(latest['subject']))
+                            and auto_sources == latest.get('auto_sources', False))
         cached_pages = latest.get('pages', {}) if reusable_partial else {}
+        # Respect the current permissions and original retrieval date. A resume
+        # must never renew a page's six-hour freshness or expand manual domains.
+        from app.agent.web import check_url, ToolFailure
+        domains = latest.get('domains', []) if auto_sources else allowed_domains
+        checked_pages = {}
+        for sid, page in cached_pages.items():
+            try:
+                check_url(page['url'], domains)
+                retrieved = datetime.fromisoformat(page['retrieved_at'])
+                if retrieved.tzinfo is None or not 0 <= (datetime.now(timezone.utc)-retrieved).total_seconds() <= 21600:
+                    continue
+                if page.get('status') != 'ok':
+                    continue
+                checked_pages[sid] = page
+            except (KeyError, ValueError, TypeError, ToolFailure):
+                continue
+        cached_pages = checked_pages
         resume = {}
         if cached_pages:
             resume['cached_pages'] = dict(list(cached_pages.items())[-2:])
-            resume['domains'] = latest.get('domains', [])
+            resume['domains'] = list(domains)
             resume['selected_sources'] = latest.get('selected_sources', [])
             resume['source_candidates'] = latest.get('source_candidates', [])
             resume['discovery_attempted'] = latest.get('discovery_attempted', False)
             resume['sources'] = [source for source in latest.get('sources', [])
                                  if source.get('source_id') in resume['cached_pages']]
+            compact = [f for f in compact if all(urlsplit(url).hostname in domains for url in f.get('urls', []))]
         return {'known_findings':compact,'known_findings_truncated':len(compact)<len(findings),
                 'update_since':completed['ended_at'] if completed else None,
                 'base_mission_id':watch['latest_mission_id'], **resume}
