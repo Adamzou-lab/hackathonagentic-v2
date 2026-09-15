@@ -1483,9 +1483,9 @@
     button.textContent = apiEnabled ? "Mettre les recherches en pause" : "Réactiver les recherches";
     button.setAttribute("aria-label", button.textContent + (apiEnabled ? " — actuellement activée" : " — actuellement désactivée"));
     const status = q("#lk-api-status");
-    status.hidden = false;
+    status.hidden = apiEnabled === true;
     status.textContent = apiEnabled
-      ? "Les recherches sont disponibles. Leur coût estimé s’affiche pendant la veille."
+      ? ""
       : "Les recherches sont en pause pour tout le monde. Vos veilles restent accessibles. Les recherches déjà envoyées peuvent avoir été facturées.";
   }
   async function refreshApiControl() {
