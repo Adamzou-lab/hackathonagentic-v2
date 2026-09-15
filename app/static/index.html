@@ -15,6 +15,7 @@
     <script defer src="/static/demo.js"></script>
     <script defer src="/static/stream.js"></script>
     <script defer src="/static/usage.js"></script>
+    <script defer src="/static/home-motion.js"></script>
     <script defer src="/static/app.js"></script>
   </head>
   <body>
@@ -40,7 +41,19 @@
           <span class="lk-eyebrow">Votre veille, sous contrôle</span>
           <div class="lk-headline">
             <h1>Un sujet. Des sources.<br />On s’occupe de la suite.</h1>
-            <img class="lk-headline-mascot" src="/static/assets/loupe-wink.webp" alt="" aria-hidden="true" width="262" height="472" decoding="async" />
+            <div class="lk-home-motion" data-motion="waiting" aria-hidden="true">
+              <div class="lk-motion-orbit"></div>
+              <div class="lk-motion-paper lk-motion-paper-a"><b class="lk-motion-page-dot"></b><em></em><em></em><em></em><em></em></div>
+              <div class="lk-motion-paper lk-motion-paper-b"><b class="lk-motion-page-dot"></b><em></em><em></em><em></em><em></em></div>
+              <div class="lk-motion-paper lk-motion-paper-c"><b class="lk-motion-page-dot"></b><em></em><em></em><em></em><em></em></div>
+              <div class="lk-motion-character">
+                <img class="lk-motion-idle" src="/static/assets/loupe-idle.webp" alt="" width="512" height="512" decoding="async" />
+                <img class="lk-motion-wink" src="/static/assets/loupe-wink.webp" alt="" width="262" height="472" decoding="async" />
+                <div class="lk-motion-shine"><b></b></div>
+              </div>
+              <div class="lk-motion-paper lk-motion-summary"><span class="lk-motion-summary-icon"><i data-lucide="check"></i></span><span class="lk-motion-summary-label">Synthèse</span><em class="lk-motion-highlight"></em><em></em><em></em></div>
+              <div class="lk-motion-twinkle"></div>
+            </div>
           </div>
           <p>Les informations utiles sur votre sujet, réunies dans une synthèse sourcée.</p>
         </div>

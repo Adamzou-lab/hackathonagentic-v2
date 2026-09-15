@@ -118,21 +118,90 @@
   margin-bottom: 29px;
 }
 #lockin-mock .lk-headline {
+  position: relative;
   display: grid;
-  /* Colonnes latérales égales : la mascotte ne décale pas le titre. */
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* Le titre reste centré dans la page ; la scène occupe sa propre zone. */
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 30px;
+  min-height: 176px;
   margin: 14px 0;
 }
-#lockin-mock .lk-headline h1 { grid-column: 2; margin: 0; min-width: 0; }
-#lockin-mock .lk-headline-mascot {
-  grid-column: 3;
-  justify-self: start;
-  width: auto;
-  height: 136px;
+#lockin-mock .lk-headline h1 { grid-column: 1; margin: 0; min-width: 0; font-size: clamp(32px, 4vw, 46px); }
+#lockin-mock .lk-home-motion {
+  position: absolute;
+  left: calc(50% + 270px);
+  top: -16px;
+  width: 220px;
+  height: 205px;
+  text-align: left;
+  isolation: isolate;
+}
+#lockin-mock .lk-home-motion::after {
+  content: "";
+  position: absolute;
+  left: 79px;
+  bottom: 6px;
+  width: 98px;
+  height: 9px;
+  border-radius: 50%;
+  background: light-dark(#303b2920, #060b0780);
+  filter: blur(4px);
+  z-index: 0;
+}
+#lockin-mock .lk-motion-character {
+  position: absolute;
+  inset: 0;
+  transform-origin: 130px 190px;
+  z-index: 3;
+  transition: rotate .7s cubic-bezier(.4,0,.2,1);
+}
+#lockin-mock .lk-motion-idle,
+#lockin-mock .lk-motion-wink {
+  position: absolute;
   object-fit: contain;
   pointer-events: none;
+}
+#lockin-mock .lk-motion-idle { width: 185px; height: 185px; left: 39px; top: 16px; }
+#lockin-mock .lk-motion-wink { width: 90px; height: 162px; left: 88px; top: 28px; opacity: 0; }
+#lockin-mock .lk-home-motion[data-motion=finished].lk-motion-focused .lk-motion-character { rotate: -2.5deg; }
+#lockin-mock .lk-home-motion[data-motion=playing] .lk-motion-character,
+#lockin-mock .lk-home-motion[data-motion=playing] .lk-motion-paper { will-change: transform, opacity; }
+#lockin-mock .lk-motion-shine { position: absolute; left: 91px; top: 30px; width: 80px; height: 80px; border-radius: 50%; overflow: hidden; z-index: 4; pointer-events: none; }
+#lockin-mock .lk-motion-shine b { position: absolute; inset: -20px auto -20px -80px; width: 22px; background: linear-gradient(90deg,transparent,#fff9,transparent); transform: rotate(25deg); opacity: 0; }
+#lockin-mock .lk-motion-orbit { position: absolute; left: 78px; top: 18px; width: 104px; height: 104px; border: 1px solid color-mix(in srgb, var(--lk-accent) 38%, transparent); border-radius: 50%; opacity: 0; z-index: 0; }
+#lockin-mock .lk-motion-paper {
+  position: absolute;
+  width: 55px;
+  height: 69px;
+  border-radius: 6px;
+  background: #faf4e4;
+  border: 1px solid #fff8;
+  padding: 10px 8px;
+  box-shadow: 0 5px 15px #0002;
+  opacity: 0;
+  z-index: 1;
+  transform-origin: 50% 50%;
+}
+#lockin-mock .lk-motion-paper-a { left: 14px; top: 14px; }
+#lockin-mock .lk-motion-paper-b { left: 158px; top: 3px; }
+#lockin-mock .lk-motion-paper-c { left: 157px; top: 115px; }
+#lockin-mock .lk-motion-page-dot { display: block; width: 8px; height: 8px; border-radius: 3px; background: #dd7b54; margin-bottom: 8px; }
+#lockin-mock .lk-motion-paper em { display: block; height: 3px; background: #d3cbb8; border-radius: 3px; margin: 5px 0; font-style: normal; }
+#lockin-mock .lk-motion-paper em:nth-last-child(1) { width: 65%; }
+#lockin-mock .lk-motion-paper em:nth-last-child(2) { width: 86%; }
+#lockin-mock .lk-motion-paper em.lk-motion-highlight { background: #e88e68; }
+#lockin-mock .lk-motion-summary { left: 19px; top: 85px; width: 67px; height: 84px; z-index: 4; transform: rotate(-8deg); padding: 10px; }
+#lockin-mock .lk-motion-summary-label { display: block; font-size: 8px; font-weight: 600; letter-spacing: .2px; color: #3c4439; margin: 6px 0 8px; }
+#lockin-mock .lk-motion-summary-icon { height: 16px; width: 16px; border-radius: 50%; background: #e6e8d8; color: #487443; display: grid; place-items: center; opacity: 0; }
+#lockin-mock .lk-motion-summary-icon svg.lucide { width: 11px; height: 11px; }
+#lockin-mock .lk-motion-twinkle { position: absolute; left: 177px; top: 78px; width: 8px; height: 8px; background: var(--lk-accent); border-radius: 2px; opacity: 0; rotate: 45deg; z-index: 4; }
+/* L'état final existe aussi sans animation ou après une interruption. */
+#lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-summary,
+#lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-summary-icon,
+#lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-wink { opacity: 1; }
+#lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-idle { opacity: 0; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  #lockin-mock .lk-home-motion[data-motion=finished]:hover .lk-motion-character { rotate: 1.5deg; }
 }
 #lockin-mock h1 {
   font-size: 46px;
@@ -615,10 +684,9 @@
     gap: 8px;
   }
 }
-@media (max-width: 700px) {
-  #lockin-mock .lk-headline { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  #lockin-mock .lk-headline h1 { grid-column: 1; }
-  #lockin-mock .lk-headline-mascot { grid-column: 1; justify-self: center; height: 112px; }
+@media (max-width: 1000px) {
+  #lockin-mock .lk-headline { min-height: 0; gap: 12px; }
+  #lockin-mock .lk-home-motion { position: relative; left: auto; top: auto; justify-self: center; }
 }
 @media (max-width: 450px) {
   #lockin-mock .lk-header {
@@ -710,7 +778,7 @@
   min-width: 0;
   overflow: hidden;
   cursor: pointer;
-  transition: flex-grow .38s cubic-bezier(.22,.61,.36,1), height .32s cubic-bezier(.22,.61,.36,1), border-color .2s, background-color .2s, box-shadow .2s, transform .2s;
+  transition: flex-grow .65s cubic-bezier(.4,0,.2,1), height .65s cubic-bezier(.4,0,.2,1), border-color .3s, background-color .3s, box-shadow .3s, transform .2s;
 }
 #lockin-mock .lk-pack-choice {
   position: absolute;
@@ -755,7 +823,7 @@
   visibility: hidden;
   transform: translateX(10px) scale(.92);
   pointer-events: none;
-  transition: opacity .16s, transform .28s ease-out, visibility 0s .16s;
+  transition: opacity .38s, transform .65s cubic-bezier(.4,0,.2,1), visibility 0s .38s;
 }
 #lockin-mock .lk-pack:has(.lk-pack-choice:checked) {
   flex-grow: 2.4;
@@ -771,7 +839,7 @@
   opacity: 1;
   visibility: visible;
   transform: translateX(0) scale(1);
-  transition: opacity .24s .1s, transform .34s .06s, visibility 0s;
+  transition: opacity .38s .08s, transform .65s cubic-bezier(.4,0,.2,1) .08s, visibility 0s;
 }
 #lockin-mock .lk-pack:has(.lk-pack-choice:focus-visible) {
   outline: 2px solid var(--lk-accent);
@@ -885,14 +953,12 @@
   }
   #lockin-mock .lk-headline { gap: 8px; }
   #lockin-mock .lk-headline h1 { font-size: 28px; letter-spacing: -1.2px; }
-  #lockin-mock .lk-headline-mascot { height: 112px; }
   #lockin-mock .lk-mission-intro { grid-template-columns: minmax(0, 1fr) 68px; gap: 10px; }
   #lockin-mock .lk-mission-mascot { width: 68px; height: 104px; }
 }
 @media (max-width: 360px) {
   #lockin-mock .lk-pack { --lk-pack-art-offset: 14px; }
   #lockin-mock .lk-headline h1 { font-size: 24px; }
-  #lockin-mock .lk-headline-mascot { height: 96px; }
 }
 @media (pointer: coarse) {
   #lockin-mock .lk-range {
