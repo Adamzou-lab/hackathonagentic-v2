@@ -97,7 +97,8 @@
         { opacity: 1, transform: "translate3d(0,0,0) scale(1) rotate(-8deg)" },
       ], 3010, 650, ease);
       animate(q(".lk-motion-summary-icon"), [{ opacity: 0, transform: "scale(.8)" }, { opacity: 1, transform: "scale(1)" }], 3490, 460, ease);
-      animate(q(".lk-motion-idle"), [{ opacity: 1 }, { opacity: 0 }], 3260, 440, ease);
+      // Le corps et la monture restent ceux du sprite de repos. Seul le
+      // visage masqué apparaît, sans redimensionner ni déplacer la loupe.
       animate(q(".lk-motion-wink"), [{ opacity: 0 }, { opacity: 1 }], 3260, 440, ease);
       animate(q(".lk-motion-twinkle"), sampled((time) => {
         const pulse = Math.sin(Math.PI * clamp((time - 3550) / 650)) ** 2;

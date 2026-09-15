@@ -162,7 +162,19 @@
   pointer-events: none;
 }
 #lockin-mock .lk-motion-idle { width: 185px; height: 185px; left: 39px; top: 16px; }
-#lockin-mock .lk-motion-wink { width: 90px; height: 162px; left: 88px; top: 28px; opacity: 0; }
+/* Les sprites ont des marges et des proportions différentes. On conserve
+   la silhouette de repos et on superpose seulement le visage recalé sur
+   le centre de sa lentille : aucun changement de taille du personnage. */
+#lockin-mock .lk-motion-wink {
+  width: 98.25px;
+  height: 177px;
+  left: 84.8125px;
+  top: 23px;
+  opacity: 0;
+  clip-path: ellipse(34% 18.5% at 47.5% 25.5%);
+  -webkit-mask-image: radial-gradient(ellipse 34% 18.5% at 47.5% 25.5%, #000 90%, transparent 100%);
+  mask-image: radial-gradient(ellipse 34% 18.5% at 47.5% 25.5%, #000 90%, transparent 100%);
+}
 #lockin-mock .lk-home-motion[data-motion=finished].lk-motion-focused .lk-motion-character { rotate: -2.5deg; }
 #lockin-mock .lk-home-motion[data-motion=playing] .lk-motion-character,
 #lockin-mock .lk-home-motion[data-motion=playing] .lk-motion-paper { will-change: transform, opacity; }
@@ -199,7 +211,6 @@
 #lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-summary,
 #lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-summary-icon,
 #lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-wink { opacity: 1; }
-#lockin-mock .lk-home-motion[data-motion=finished] .lk-motion-idle { opacity: 0; }
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   #lockin-mock .lk-home-motion[data-motion=finished]:hover .lk-motion-character { rotate: 1.5deg; }
 }
