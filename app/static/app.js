@@ -290,6 +290,7 @@
       q("#lk-confirmdomain").click();
     }
   };
+  let customPackSelection = false;
   function updateLimits() {
     for (const id of ["budget", "duration"]) {
       const number = q("#lk-" + id),
@@ -309,12 +310,13 @@
       );
     }
     let name = "Personnalisé";
-    root.querySelectorAll(".lk-pack").forEach((button) => {
+    root.querySelectorAll(".lk-pack").forEach((pack) => {
       const active =
-        Number(button.dataset.budget) === q("#lk-budget").valueAsNumber &&
-        Number(button.dataset.duration) === q("#lk-duration").valueAsNumber;
-      button.setAttribute("aria-pressed", String(active));
-      if (active) name = button.dataset.name;
+        !customPackSelection &&
+        Number(pack.dataset.budget) === q("#lk-budget").valueAsNumber &&
+        Number(pack.dataset.duration) === q("#lk-duration").valueAsNumber;
+      pack.querySelector(".lk-pack-choice").checked = active;
+      if (active) name = pack.dataset.name;
     });
     q("#lk-packstate").textContent = name;
     const count = q("#lk-budget").valueAsNumber;
@@ -327,20 +329,32 @@
   for (const id of ["budget", "duration"]) {
     const number = q("#lk-" + id),
       range = q("#lk-" + id + "range");
-    number.oninput = updateLimits;
+    number.oninput = () => {
+      customPackSelection = true;
+      updateLimits();
+    };
     range.oninput = () => {
+      customPackSelection = true;
       number.value = range.value;
       updateLimits();
     };
   }
   root.querySelectorAll(".lk-pack").forEach(
-    (button) =>
-      (button.onclick = () => {
-        q("#lk-budget").value = button.dataset.budget;
-        q("#lk-duration").value = button.dataset.duration;
+    (pack) =>
+      (pack.querySelector(".lk-pack-choice").onchange = () => {
+        customPackSelection = false;
+        q(".lk-settings").open = false;
+        q("#lk-budget").value = pack.dataset.budget;
+        q("#lk-duration").value = pack.dataset.duration;
         updateLimits();
       }),
   );
+  q(".lk-settings").addEventListener("toggle", () => {
+    if (q(".lk-settings").open) {
+      customPackSelection = true;
+      updateLimits();
+    }
+  });
   async function api(path, options = {}) {
     if (demo) return demoApi(path, options);
     const controller = new AbortController(),
@@ -507,6 +521,7 @@
     if (mission?.id === state.id && mission.reuse && !state.reuse)
       state = { ...state, reuse: mission.reuse };
     if (mission?.id !== state.id) {
+      q("#lk-findings").classList.remove("lk-arrive");
       journalNodes.clear();
       q("#lk-draft").hidden = true;
       q("#lk-draft-input").textContent = "";
@@ -651,6 +666,10 @@
         : "SYNTHÈSE TERMINÉE"
       : "SYNTHÈSE EN CONSTRUCTION";
     const results = q("#lk-findings");
+    if (done && state.findings.length && results.dataset.revealedMission !== state.id) {
+      results.dataset.revealedMission = state.id;
+      results.classList.add("lk-arrive");
+    }
     results.replaceChildren();
     results.append(briefOverview(state.findings));
     results.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
