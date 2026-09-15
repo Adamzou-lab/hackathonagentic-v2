@@ -2,6 +2,9 @@
   "use strict";
   const number = value => Number.isSafeInteger(value) && value >= 0
     ? value.toLocaleString("fr-FR") : "Indisponible";
+  // Présentation des mesures serveur : une veille réutilisée affiche le bilan
+  // de son exécution d'origine, pas une nouvelle dépense. Un relevé incomplet
+  // n'est pas présenté comme un total certain.
   function presentation(state, demo = false) {
     const u = state.usage;
     const reuse = state.reuse?.reason;

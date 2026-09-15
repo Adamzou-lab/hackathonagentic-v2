@@ -1,4 +1,7 @@
 /* Transport de démonstration explicite. Aucun appel réseau. */
+// Simulateur d'interface, pas moteur agentique : les scénarios sont scriptés
+// et restent en mémoire. Ils servent à montrer les écrans sans crédit API ;
+// pour prouver le choix réel du modèle, utiliser l'application sans ?demo.
 window.createLockinDemo = function () {
   let state,
     step = 0,

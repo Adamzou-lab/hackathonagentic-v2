@@ -37,6 +37,9 @@ def page(numero, texte=TEXTE, publiee=None):
                 retrieved_at='2026-01-01T00:00:00+00:00', published_at=publiee)
 
 
+# Double de test volontairement scripté. Ce scénario vérifie comment Engine
+# réagit à une décision donnée ; il ne prouve pas que Haiku choisirait cette
+# action ni que le fournisseur fonctionne avec la clé de la démonstration.
 class Fournisseur:
     """Modèle scripté : il accepte le périmètre, puis déroule la liste fournie."""
 
@@ -68,6 +71,8 @@ class Lecteur:
         return self.pages.get(url) or page(1)
 
 
+# Le test échoue si une lecture interdite est réellement tentée : on vérifie
+# l'absence d'effet réseau, pas seulement l'affichage d'un message de refus.
 class LecteurInterdit:
     """Refuse d'être appelé : prouve qu'une URL bloquée n'est jamais visitée."""
 
@@ -257,6 +262,9 @@ async def s10_idempotence(store):
     return ok, f"constats={len(etat['findings'])} dispositions={dispositions}"
 
 
+# Dix situations indépendantes, dont pannes et preuves invalides.
+# Le score atteste uniquement ces scénarios ; il ne garantit pas l'absence
+# de toute erreur ou hallucination sur des demandes réelles inédites.
 SCENARIOS = [
     ('Mission nominale', s01_mission_nominale),
     ('Budget épuisé', s02_budget_epuise),
@@ -287,6 +295,9 @@ async def executer(nom, scenario, dossier, index):
         store.db.close()
 
 
+# Exécuter tous les scénarios, afficher leur résultat puis un score global.
+# Le code de sortie vaut 1 si au moins un test échoue : utilisable aussi en CI,
+# sans avoir à lire ou interpréter manuellement le texte de la console.
 async def principal():
     print('Évaluation automatisée de Lockin — doubles déterministes, aucun appel payant.\n')
     resultats = []

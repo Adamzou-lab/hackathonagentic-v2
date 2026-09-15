@@ -87,6 +87,9 @@ class Store(WatchStore):
         return (*watch_identity(data), data['action_budget'], data['duration_minutes'])
 
     @json_guard
+    # Économie sans modèle : réutiliser une mission identique en cours ou récente
+    # (même sujet normalisé, sources, budget et durée). Une actualisation explicite
+    # écarte les anciennes missions terminées ; un résultat partiel doit être utile.
     def reusable(self, request, max_age_seconds=86400):
         wanted = self.request_identity(request.model_dump())
         cutoff = time.time() - max_age_seconds
@@ -112,6 +115,9 @@ class Store(WatchStore):
             return data['id']
         return None
 
+    # Une veille est une fiche durable ; une mission est une exécution datée.
+    # Actualiser crée une nouvelle mission rattachée à la même veille, avec une
+    # mémoire bornée des constats antérieurs et, si admissible, des pages récentes.
     def create(self, request, watch_id=None):
         mid = uuid.uuid4().hex
         wid = watch_id or request.watch_id or self.exact_watch(request)
@@ -151,6 +157,10 @@ class Store(WatchStore):
         with self.db:
             self._persist(data, kind, event)
 
+    # État de mission et événement sont écrits dans la même transaction SQLite.
+    # « seq » ordonne les événements d'une mission et « at » donne l'heure UTC :
+    # le journal et l'état courant ne doivent pas raconter deux versions différentes.
+    # Ce journal applicatif n'est pas une preuve cryptographique contre la modification.
     def _persist(self, data, kind, event):
         at = now()
         data['last_seen_at'] = at
@@ -167,6 +177,9 @@ class Store(WatchStore):
                 self.db.execute('SELECT seq,at,kind,data FROM events WHERE mission_id=? ORDER BY seq', (mid,))]
 
     @mission_context
+    # Fermer les opérations encore ouvertes avec un résultat « unknown » si leur
+    # issue n'est pas connue. Ne jamais convertir une interruption en succès ;
+    # les constats déjà enregistrés restent disponibles dans tous les cas.
     def finish(self, mid, status, error=None):
         data = self.get(mid)
         already_terminal = data['status'] in TERMINAL
@@ -192,6 +205,9 @@ class Store(WatchStore):
                 data.update(status=status, error=error, ended_at=now(), ended_epoch=time.time())
                 self._persist(data, 'finished', {'status': status, 'error': error, 'actions_used': data['actions_used']})
 
+    # Au redémarrage, une mission restée active est marquée interrompue, jamais
+    # relancée automatiquement. On connaît la dernière activité et l'heure de
+    # détection, mais pas l'instant exact où le processus a été tué.
     def recover(self):
         for (mid,) in self.db.execute('SELECT id FROM missions').fetchall():
             data = self.get(mid)
@@ -207,6 +223,9 @@ class Store(WatchStore):
                 })
                 self.finish(mid, 'failed', 'process_interrupted')
 
+    # Vue transmise au navigateur : état, résultats validés, consommation et journal.
+    # Les pages brutes et les clés d'idempotence ne sont pas envoyées. Sans constat,
+    # le message explique la limite rencontrée au lieu de fabriquer une synthèse.
     def snapshot(self, mid):
         data = self.get(mid)
         duration = data['duration_minutes'] * 60

@@ -18,6 +18,10 @@ class StorageUnavailable(Exception):
         super().__init__(code)
 
 
+# Secours hors de SQLite : une panne de base doit pouvoir laisser une trace
+# même quand le journal principal ne peut plus écrire. Si le fichier de secours
+# échoue aussi, tenter stderr ; cela ne garantit pas une trace si tout le disque
+# et tous les canaux de sortie sont indisponibles.
 class IncidentLog:
     def __init__(self, path):
         self.path = Path(path)
@@ -151,6 +155,9 @@ class GuardedCursor:
             self._owner._fail('storage_sqlite_error', 'cursor_close')
 
 
+# SQLite peut continuer à utiliser un fichier déjà ouvert après sa suppression.
+# Comparer aussi son identité sur disque permet de détecter disparition ou
+# remplacement, puis d'arrêter plutôt que recréer silencieusement une base vide.
 class GuardedConnection:
     """Vérifie le fichier avant/après chaque opération, y compris les lectures.
 

@@ -64,6 +64,9 @@ class WatchStore:
             'SELECT m.data FROM missions m JOIN watch_runs r ON m.id=r.mission_id WHERE r.watch_id=? '
             "ORDER BY json_extract(m.data, '$.started_epoch'),m.id", (wid,))]
 
+    # Reconstruire la fiche « Mes veilles » à partir de ses exécutions successives.
+    # Une correction remplace la version visible du constat, tout en laissant
+    # l'ancienne preuve consultable dans l'historique de sa mission.
     def watch(self, wid):
         runs = self.watch_runs(wid)
         meta = self.db.execute('SELECT subject,created_at FROM watches WHERE id=?',(wid,)).fetchone()
@@ -113,6 +116,9 @@ class WatchStore:
             items.append({k:v for k,v in watch.items() if k not in {'findings','runs'}})
         return {'watches':items,'total':len(matches)}
 
+    # Suggestion locale de rapprochement, sans coût IA : similarité des titres
+    # et recouvrement des mots. Elle peut se tromper ; l'API demande un choix avant
+    # fusion. Elle ne décide ni du périmètre métier ni de l'outil de l'agent.
     def similar_watches(self, request):
         subject = normalize_subject(request.subject)
         words = set(re.findall(r'\w+',subject))
@@ -128,6 +134,9 @@ class WatchStore:
         candidates.sort(key=lambda x:(-x[1],x[0]['created_at']))
         return [c for c,_ in candidates[:3]]
 
+    # Préparer une mémoire courte pour rechercher les nouveautés sans tout renvoyer.
+    # Seules certaines missions partielles permettent de reprendre des pages de
+    # moins de six heures ; leur date d'origine et les permissions sont conservées.
     def prior_context(self, wid, allowed_domains, auto_sources=False, subject=None):
         watch = self.watch(wid)
         findings = watch['findings']

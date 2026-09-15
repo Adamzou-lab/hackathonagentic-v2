@@ -1,5 +1,8 @@
 """Budget policy: research cannot spend the reserve needed to save evidence."""
 
+# Politique commune des packs : plafond d'actions, de recherches web payantes
+# et de tokens observés. Une partie des actions reste dédiée à la finalisation ;
+# la découverte automatique a un coût initial supplémentaire prévu ici.
 def limits(actions, auto_sources=False):
     minimum_research = 3 if auto_sources else 1
     reserve = min(3, max(1, actions // 4), max(0, actions - minimum_research))
@@ -11,6 +14,9 @@ def limits(actions, auto_sources=False):
             'token_budget': tokens + (16000 if auto_sources else 0)}
 
 
+# Additionner les compteurs reçus après les réponses complètes, cache inclus.
+# Ce total observé sert au contrôle entre appels, pas à connaître en direct
+# la consommation d'un appel interrompu ni le solde du compte Anthropic.
 def observed_tokens(events):
     total = 0
     for event in events:
@@ -44,6 +50,8 @@ def finalization_token_reserve(events, ceiling):
     return min(ceiling, max(8192, int(max(measured[-3:]) * 1.5) + 4096))
 
 
+# Estimer une prochaine recherche d'après celles déjà mesurées, en gardant
+# la réserve de synthèse. C'est une marge prudente, pas un devis garanti.
 def additional_web_search_fits(events, ceiling):
     """Avoid another native search when measured costs would consume finalization."""
     native = [observed_tokens([e]) for e in events if e.get('kind') == 'model_finished'

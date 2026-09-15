@@ -64,6 +64,9 @@ def frame(event, data, seq=None):
     return f'{head}event: {event}\ndata: {body}\n\n'
 
 
+# Le navigateur reçoit des trames SSE sur une connexion HTTP ouverte.
+# Le journal est relu toutes les 0,2 s ; les fragments du fournisseur arrivent
+# via le Broker. Se reconnecter lit la suite, sans relancer une recherche IA.
 async def mission_stream(store, broker, mid, last_seq=0, poll=0.2, terminal=frozenset()):
     """Fusionne le journal persisté et les fragments provisoires, dans cet ordre.
 

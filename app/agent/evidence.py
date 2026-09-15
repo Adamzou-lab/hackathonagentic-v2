@@ -2,6 +2,9 @@
 import hashlib
 
 
+# Fabriquer des références courtes à des extraits exacts, sans appel IA.
+# Le modèle cite l'identifiant ; le serveur retrouve le texte original pour
+# éviter de lui faire recopier une citation approximative.
 def passages(page, limit=24):
     text = page.get('text', '')
     result, start = [], 0
@@ -19,6 +22,9 @@ def passages(page, limit=24):
     return result
 
 
+# Les mots du sujet servent uniquement à choisir quelques extraits pertinents
+# pour limiter les tokens. Ce tri local ne choisit AUCUN outil et ne constitue
+# pas le routage par mots-clés interdit au checkpoint.
 def context_passages(page, subject, limit=4):
     """Rank exact excerpts locally; this selects data, never an agent action."""
     import re

@@ -3,6 +3,9 @@
 TOKEN_FIELDS = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
 
 
+# Comparer les réponses mesurées aux tentatives : un appel interrompu peut
+# avoir coûté des tokens sans fournir de relevé. Dans ce cas, garder les mesures
+# partielles et afficher « indisponible » pour le total, jamais un faux zéro.
 def usage_summary(data, events, elapsed):
     reports = [e['data'].get('usage') for e in events if e['kind'] == 'model_finished']
     totals = {key: 0 for key in TOKEN_FIELDS}

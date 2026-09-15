@@ -29,6 +29,9 @@ class Abandoned(Exception):
     """L'attente n'a pas confirmé son annulation ; sa réponse tardive est ignorée."""
 
 
+# Boucle agentique : état observé → décision du modèle → contrôle serveur
+# → outil réel → résultat enregistré → nouvelle décision. Le modèle propose ;
+# le moteur garde la maîtrise des permissions, du budget et de l'arrêt.
 class Engine:
     def __init__(self, store, provider, reader_factory=WebReader):
         self.store, self.provider = store, provider
@@ -70,6 +73,8 @@ class Engine:
                     self.storage_failed = True
         task.add_done_callback(completed)
 
+    # Relire l'état persistant avant de travailler et au retour des attentes :
+    # une réponse tardive ne doit pas contourner un arrêt demandé entre-temps.
     def guard(self, mid):
         d = self.store.get(mid)
         if not self.store.api_control()['api_enabled']:
@@ -80,6 +85,9 @@ class Engine:
             raise Halt('deadline_reached')
         return d
 
+    # Décompter AVANT l'effet réel : même un appel qui échoue compte comme
+    # tentative. Les tokens sont ceux déjà reçus ; le dernier appel peut dépasser
+    # le seuil, car sa consommation complète n'est pas connue à son départ.
     def reserve(self, mid, counter, limit, kind):
         d = self.guard(mid)
         if counter == 'model_calls_used':
@@ -93,6 +101,9 @@ class Engine:
         d[counter] = d.get(counter, 0) + 1
         self.store.save(d, kind, {counter:d[counter]})
 
+    # Passer de la recherche à la sauvegarde avant d'épuiser les ressources.
+    # La réserve laisse une chance de produire des constats étayés ; elle ne
+    # fabrique pas une synthèse si aucune preuve exploitable n'a été recueillie.
     def prepare_finalization(self, mid):
         d = self.guard(mid)
         policy = limits(d['action_budget'], d.get('auto_sources', False))
@@ -152,6 +163,9 @@ class Engine:
         if mid in self.unconfirmed_stops:
             raise Abandoned()
 
+    # Tracer la dépendance, le code d'erreur et la réaction retenue. L'heure de
+    # l'événement est celle de la détection serveur, pas nécessairement celle
+    # de la coupure physique du réseau ou du fournisseur.
     def report_failure(self, mid, code, dependency, operation, operation_id=None):
         d = self.store.get(mid)
         d['had_errors'] = True
@@ -162,6 +176,9 @@ class Engine:
             'action_number':d['actions_used'] if d.get('current_action') else None,
         })
 
+    # Enveloppe des attentes externes : début horodaté, délai borné par le temps
+    # restant, puis résultat/erreur/annulation. Un identifiant relie début et fin
+    # pour reconstituer précisément quel appel était en cours lors d'un incident.
     async def call(self, mid, awaitable, timeout=15, *, dependency='tool', operation='call'):
         entered = False
         try:
@@ -201,6 +218,9 @@ class Engine:
             if not entered and inspect.iscoroutine(awaitable):
                 awaitable.close()
 
+    # L'arrêt est d'abord enregistré, puis l'annulation est demandée à la tâche.
+    # C'est une annulation coopérative, pas un arrêt brutal du processus. Si elle
+    # n'est pas confirmée à temps, expire_stop bloque les nouvelles missions.
     def stop(self, mid, reason='operator'):
         d = self.store.get(mid)
         if d['status'] not in TERMINAL and d['status'] != 'stopping':
@@ -215,6 +235,9 @@ class Engine:
             else:
                 self.store.finish(mid, 'stopped')
 
+    # Barrière avant publication : chaque citation doit être une sous-chaîne
+    # exacte d'une page conservée, sur un domaine autorisé. Cela prouve la
+    # provenance du passage, pas la véracité absolue de ce que dit son auteur.
     def save_finding(self, mid, args):
         d = self.guard(mid)
         finding = args.finding.model_dump()
@@ -239,6 +262,9 @@ class Engine:
                 finding['date_status'] = 'in_window' if start <= day <= end else 'outside_window'
             except ValueError:
                 finding.update(event_date=None, date_status='unknown')
+        # Le contrôle ci-dessous écarte une corroboration manifestement insuffisante.
+        # Deux hôtes distincts ne prouvent toutefois pas deux éditeurs indépendants ;
+        # l'instruction au modèle et les réserves affichées complètent ce minimum.
         hosts = {(urlsplit(d['pages'][e['source_id']]['url']).hostname or '').lower().removeprefix('www.')
                  for e in finding['evidence']}
         quotes = {' '.join(e['quote'].split()).casefold() for e in finding['evidence']}
@@ -263,6 +289,8 @@ class Engine:
             if related not in known:
                 raise ToolFailure('unknown_related_finding')
         finding.update(change=change, related_finding_id=related)
+        # Idempotence : même contenu = même empreinte ; une même clé avec un autre
+        # contenu est refusée. Répéter une sauvegarde ne doit pas gonfler la synthèse.
         fingerprint = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest()
         old = d['keys'].get(args.idempotency_key)
         if old and old != fingerprint:
@@ -300,6 +328,9 @@ class Engine:
                              'published_at':page.get('published_at')})
         return finding, evidence
 
+    # Avec AnthropicProvider, un second appel vérifie le lien entre affirmation
+    # et extraits avant sauvegarde. Il consomme aussi du budget et peut rejeter
+    # le constat ; ce contrôle par modèle réduit le risque sans être infaillible.
     async def verify_finding(self, mid, args):
         verifier = getattr(self.provider, 'verify_finding', None)
         if not getattr(self.provider, 'semantic_verification', False) or not callable(verifier):
@@ -320,6 +351,9 @@ class Engine:
             'title':finding.get('title','')[:200],
             'evidence_count':len(evidence)})
 
+    # Routage technique d'un appel structuré déjà choisi par le modèle.
+    # Les « if name == ... » comparent le nom de l'outil, jamais des mots du sujet.
+    # Les arguments sont encore validés ici : le modèle ne peut pas s'auto-autoriser.
     async def execute(self, mid, name, raw, reader):
         if name in self.disabled_tools:
             raise ToolFailure('tool_disabled_for_test')
@@ -353,6 +387,9 @@ class Engine:
             d['source_candidates'] = checked
             self.model_finished(d, usage)
             return checked
+        # Les domaines proposés doivent provenir de la recherche réelle précédente.
+        # Vérifier aussi leur résolution DNS ; être candidat ne certifie pas leur
+        # fiabilité éditoriale, et le lecteur recontrôlera le réseau à la connexion.
         if name == 'select_sources':
             args = SelectionInput.model_validate(raw)
             candidates = {c['domain']:c for c in d.get('source_candidates',[])}
@@ -391,6 +428,8 @@ class Engine:
             d['search_hits'] = list(hits.values())[-30:]
             self.model_finished(d, usage)
             return result
+        # Relire une page déjà disponible ne coûte pas un nouvel accès réseau.
+        # Pour une URL non conservée, deux tentatives maximum évitent une boucle de panne.
         if name == 'read_page':
             args = ReadInput.model_validate(raw)
             d = self.guard(mid)
@@ -419,6 +458,9 @@ class Engine:
             return self.save_finding(mid, args)
         raise ToolFailure('unknown_tool')
 
+    # Signe de vie persistant toutes les deux secondes pendant les attentes.
+    # Si le stockage disparaît, annuler la tâche : poursuivre sans journal ferait
+    # perdre la traçabilité. Le secours indépendant prend alors le relais.
     async def heartbeat(self, mid, owner):
         while True:
             await asyncio.sleep(self.heartbeat_seconds)
@@ -450,6 +492,9 @@ class Engine:
             await asyncio.gather(pulse, return_exceptions=True)
             self.pulses.pop(mid, None)
 
+    # Point à montrer à l'oral : c'est la boucle réelle. Le premier choix valide
+    # le périmètre ; les suivants utilisent les résultats des outils précédents.
+    # Aucun tableau de réponses n'est associé aux mots de la requête utilisateur.
     async def _run(self, mid):
         history = []
         scope_approved = False
@@ -467,6 +512,9 @@ class Engine:
                     raise Halt('budget_exhausted')
                 self.reserve(mid, 'model_calls_used', 60, 'model_started')
                 self.reserve(mid, 'network_requests_used', 200, 'network_started')
+                # Contexte borné : extraits de deux pages récentes, deux derniers résultats
+                # et mémoire compacte de la veille. Évite de renvoyer tout l'historique payant ;
+                # le modèle ne voit donc pas forcément l'intégralité des sources enregistrées.
                 context = {'scope_approved':scope_approved, 'finalization':bool(d.get('finalization_reason')), 'mission':{k:d.get(k) for k in ['subject','domains','created_at','auto_sources']},
                            'web_search_remaining': max(0, d.get('web_search_limit', limits(d['action_budget'])['web_search_limit'])-d.get('web_search_calls_used',0)) if additional_web_search_fits(self.store.events(mid), d.get('token_budget',16000)) else 0,
                            'available_sources':[{'url':s['url']} for s in list({s['url']:s for s in d.get('selected_sources',[]) + d.get('search_hits',[])}.values()) if s['url'] not in ({p['url'] for p in d['pages'].values()} | {s['url'] for s in d['sources'] if s.get('error')})],
@@ -482,10 +530,14 @@ class Engine:
                            'actions_remaining':d['action_budget']-d['actions_used'],
                            'saved_findings':[{'title':f['title'], 'finding_id':f['finding_id']} for f in d['findings']],
                            'recent_results':[h for h in history[-2:] if not (h['tool'] in {'discover_sources','select_sources'} and not (isinstance(h['result'],dict) and h['result'].get('error')))]}
+                # Le CHOIX de l'action arrive ici depuis Anthropic (nom + arguments JSON).
+                # Le serveur n'infère pas « search_web » en cherchant un mot dans le sujet.
                 name, raw, usage = await self.call(mid, self.provider.decide(context), timeout=45,
                     dependency='model_provider', operation='decide')
                 d = self.guard(mid)
                 self.model_finished(d, usage, proposed_action=name)
+                # Transformer le refus structuré en un message connu et compréhensible.
+                # Une première décision invalide n'est pas interprétée comme une autorisation.
                 if name == 'refuse' or (not scope_approved and (name != 'accept_scope' or raw != {})):
                     reasons = {
                         'out_of_scope': 'Lockin réalise des veilles documentaires sur des sources publiques. Cette demande sort de ce cadre.',
@@ -503,6 +555,8 @@ class Engine:
                     scope_approved = True
                     self.store.save(d, 'scope_accepted', {})
                     continue
+                # Terminer peut être légitime sans aucun constat. La réponse publique dira
+                # alors qu'aucun fait étayé n'a été conservé, sans inventer de contenu de secours.
                 if name == 'finish':
                     if not d['domains']:
                         raise ToolFailure('sources_not_selected')
@@ -530,6 +584,9 @@ class Engine:
                     raise
                 except Exception as exc:
                     code = failure_code(exc)
+                    # L'échec devient un résultat explicite présenté au modèle, jamais une page
+                    # ou un succès fictif. Certaines pannes autorisent une autre source ; must_stop
+                    # impose l'arrêt pour les dépendances centrales et erreurs non récupérables.
                     result = {'error': code}
                     if isinstance(exc, ValidationError):
                         result['validation_errors'] = [

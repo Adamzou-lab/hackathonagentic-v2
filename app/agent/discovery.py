@@ -75,6 +75,9 @@ def normalize_candidate_url(url):
         raise ToolFailure('blocked_url') from None
 
 
+# La découverte cherche des candidats sans liste manuelle préalable.
+# La sélection finale est une seconde étape : jusqu'à cinq domaines issus
+# de ces résultats réels, sans compléter avec des domaines inventés.
 def extract_candidates(response):
     """Ne conserve que les résultats structurés, jamais les URL inventées en texte."""
     if not isinstance(response, dict) or not isinstance(response.get('content'), list):

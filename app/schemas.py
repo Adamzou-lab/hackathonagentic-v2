@@ -18,10 +18,15 @@ def normalize_domain(value: str) -> str:
     raise ValueError('Les adresses IP ne sont pas autorisées.')
 
 
+# Contrôle de forme côté serveur, même si le navigateur est contourné :
+# champs inconnus refusés et types stricts. Cela ne juge pas le sens du sujet ;
+# le refus hors cadre relève de l'étape SCOPE dans le fournisseur.
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
 
 
+# Contrat de lancement : sujet obligatoire, domaines limités et budgets bornés.
+# Le temps est une durée maximale ; le moteur peut terminer avant son échéance.
 class MissionInput(StrictModel):
     subject: str = Field(min_length=1, max_length=500)
     domains: list[str] = Field(default_factory=list, max_length=5)
@@ -62,6 +67,8 @@ class ReadInput(StrictModel):
     url: str = Field(min_length=1, max_length=2048)
 
 
+# Une référence désigne une page déjà lue et un extrait. Ces validations
+# contrôlent sa forme ; Engine vérifie ensuite que la citation existe vraiment.
 class Evidence(StrictModel):
     source_id: str = Field(max_length=64)
     quote: str | None = Field(default=None, min_length=10, max_length=500)
@@ -74,6 +81,8 @@ class Evidence(StrictModel):
         return self
 
 
+# Structure commune de la synthèse : fait, implication, preuves et réserves.
+# La date et la corroboration restent explicites, plutôt qu'une assurance uniforme.
 class FindingDraft(StrictModel):
     title: str = Field(min_length=1, max_length=200)
     summary: str = Field(min_length=1, max_length=2000)
@@ -85,6 +94,8 @@ class FindingDraft(StrictModel):
     caveats: list[Annotated[str, Field(max_length=500)]] = Field(default_factory=list, max_length=5)
 
 
+# Une actualisation/déduplication référence un constat antérieur précis.
+# La clé d'idempotence sert à éviter deux écritures identiques après répétition.
 class SaveInput(StrictModel):
     change: Literal['new', 'update', 'duplicate'] = 'new'
     related_finding_id: str | None = Field(default=None, min_length=1, max_length=100)

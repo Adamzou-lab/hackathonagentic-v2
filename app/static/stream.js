@@ -12,6 +12,9 @@ window.readLockinStream = async function (
       const { value, done } = await reader.read();
       if (done) return;
       onActivity();
+      // Le réseau coupe les octets à des endroits arbitraires, même au milieu
+      // d'un caractère ou d'un JSON. Accumuler jusqu'à une trame SSE complète
+      // avant de parser ; le plafond suivant empêche une accumulation sans limite.
       buffer += decoder.decode(value, { stream: true });
       if (buffer.length > 1048576)
         throw new Error("Trame de suivi trop volumineuse.");

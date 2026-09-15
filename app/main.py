@@ -20,13 +20,21 @@ class ApiControlInput(BaseModel):
     enabled: StrictBool
 
 
+# Point d'entrée HTTP : relie API, stockage, modèle et moteur.
+# L'injection de provider/db_path permet de tester le vrai moteur avec des
+# services simulés et une base isolée, sans consommer de crédit Anthropic.
 def create_app(*, db_path=None, access_token=None, provider=None, incident_path=None):
     token = os.getenv('LOCKIN_ACCESS_TOKEN', '') if access_token is None else access_token
     key = os.getenv('ANTHROPIC_API_KEY', '')
+    # La clé Anthropic reste côté serveur ; le jeton opérateur est un autre secret.
+    # « configured » vérifie seulement la présence de la clé, pas sa validité
+    # ni le solde du compte : une clé refusée sera signalée lors de l'appel réel.
     configured = provider is not None or bool(key)
     public_access = os.getenv('LOCKIN_PUBLIC_ACCESS', '').lower() == 'true'
 
     @asynccontextmanager
+    # Cycle de vie : récupérer les missions interrompues avant tout lancement,
+    # puis demander un arrêt propre du moteur avant de fermer SQLite.
     async def lifespan(app):
         store = Store(db_path or os.getenv('LOCKIN_DB_PATH', 'data/lockin.db'),
                       incident_path=incident_path or os.getenv('LOCKIN_INCIDENT_PATH') or None)
@@ -65,6 +73,9 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
         return JSONResponse({'detail':exc.code, 'dependency':'sqlite', 'reaction':'stop'},
                             status_code=503)
 
+    # Cette barrière est commune aux routes API. En mode public, elle est
+    # explicitement levée : veilles et interrupteur sont partagés entre visiteurs.
+    # La liste CORS ci-dessus limite les origines web, pas les accès hors navigateur.
     def authorize(authorization: str = Header(default='')):
         if public_access:
             return
@@ -80,6 +91,8 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
             raise HTTPException(404, 'Mission introuvable.')
 
     @app.get('/health')
+    # Sonde locale sans appel payant : un état « ok » ne prouve pas que le
+    # fournisseur IA est joignable ou que sa clé fonctionne.
     async def health():
         app.state.store.check_available()
         if app.state.engine.unconfirmed_stops:
@@ -94,6 +107,9 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
                 'max_duration_minutes':30, 'poll_interval_ms':1000}
 
     @app.post('/api/control', dependencies=[Depends(authorize)])
+    # Interrupteur applicatif global, mémorisé en base : il bloque les nouveaux
+    # appels et demande l'arrêt des missions actives. Il ne révoque pas la clé
+    # chez Anthropic et n'annule pas la facturation d'un appel déjà envoyé.
     async def control(request: ApiControlInput):
         if request.enabled and not configured:
             raise HTTPException(503, 'Clé API absente du serveur.')
@@ -119,6 +135,8 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
         if (app.state.engine.closing or app.state.engine.storage_failed or
                 app.state.engine.unconfirmed_stops):
             raise HTTPException(503, 'Agent arrêté ; intervention opérateur requise.')
+        # Chercher une exécution réutilisable AVANT de solliciter le modèle :
+        # un doublon retourne le même identifiant et ne lance aucune seconde boucle.
         existing = app.state.store.reusable(request)
         if existing:
             state = snapshot(existing)
@@ -135,9 +153,13 @@ def create_app(*, db_path=None, access_token=None, provider=None, incident_path=
                 raise HTTPException(404, 'Veille introuvable.')
         if not configured:
             raise HTTPException(503, 'ANTHROPIC_API_KEY manquante côté serveur.')
+        # Une seule mission active dans cette instance : borne la charge et permet
+        # au fournisseur de rattacher sans ambiguïté son streaming à une mission.
         if app.state.engine.active():
             raise HTTPException(409, 'Une mission est déjà en cours.')
         target = request.watch_id or app.state.store.exact_watch(request)
+        # Une ressemblance de titres propose un rapprochement à l'utilisateur.
+        # Elle ne fusionne pas silencieusement deux sujets et ne choisit aucun outil.
         if not target and not request.allow_new:
             candidates = app.state.store.similar_watches(request)
             if candidates:

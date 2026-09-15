@@ -86,6 +86,9 @@
     return d.code || (d.result && d.result.error) || d.error || null;
   }
 
+  // Les libellés rendent les codes lisibles ; ils ne décident pas de la réaction.
+  // Quand l'événement la précise, la réaction enregistrée par le serveur prévaut
+  // sur le libellé générique du dictionnaire.
   function diagnoseEvent(event) {
     const d = event?.data || {};
     const result = diagnose(failureCode(event));

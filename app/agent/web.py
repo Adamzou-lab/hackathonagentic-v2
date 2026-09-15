@@ -21,6 +21,9 @@ class ToolFailure(Exception):
         super().__init__(code)
 
 
+# Premier contrôle réseau : HTTPS, port standard, hôte explicitement permis,
+# sans identifiant ni adresse IP littérale. Il s'applique aussi aux redirections ;
+# une URL autorisée par sa syntaxe doit encore passer la vérification DNS.
 def check_url(url, domains):
     try:
         p = urlsplit(url)
@@ -35,6 +38,9 @@ def check_url(url, domains):
     raise ToolFailure('blocked_url')
 
 
+# Protection SSRF : empêcher une page de faire appeler localhost ou le réseau
+# privé du serveur. Toutes les adresses résolues doivent être publiques et le
+# connecteur utilise ces adresses contrôlées pour établir la connexion.
 class PublicResolver(aiohttp.abc.AbstractResolver):
     async def resolve(self, host, port=0, family=socket.AF_INET):
         entries = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -52,6 +58,8 @@ class WebReader:
         self.robots = {}
         self.last_request = {}
 
+    # Chaque accès et redirection est contrôlé, compté et limité dans le temps.
+    # Le plafond d'un mégaoctet évite de charger une réponse arbitrairement grande.
     async def request(self, url, domains, follow_redirects=False, before_redirect=None):
         # A new connector per request pins the actual socket to checked addresses.
         # No proxies, no cookies, no redirects delegated to the HTTP library.
@@ -96,6 +104,8 @@ class WebReader:
             self.robots[root] = parser
         return self.robots[root]
 
+    # Respecter robots.txt et le délai de lecture du site. Une erreur de lecture
+    # des règles n'est pas interprétée comme une permission implicite.
     async def ensure_allowed(self, url, domains):
         rules = await self.rules_for(url, domains)
         if not rules.can_fetch('LockinBot', url):
@@ -163,6 +173,9 @@ class WebReader:
         # A feed aggregates different articles; no single date can certify them all.
         return title[:200], content, published[:40] if published and len(entries) == 1 else None
 
+    # Lire réellement HTML ou flux RSS/Atom, puis extraire du texte borné.
+    # Supprimer scripts et navigation allège le contexte ; cela ne rend pas
+    # le texte restant fiable et ne remplace pas les protections contre l'injection.
     async def read(self, url, domains):
         url = check_url(url, domains)
         await self.ensure_allowed(url, domains)

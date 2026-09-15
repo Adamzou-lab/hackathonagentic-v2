@@ -22,6 +22,9 @@ def _rates(model):
     return HAIKU_45 if 'claude-haiku-4-5' in normalized else None
 
 
+# Estimation de dépense, pas lecture du solde API : compter séparément entrée,
+# sortie, cache et recherches web selon la grille codée ci-dessus. Ces tarifs
+# sont à maintenir ; un modèle sans grille connue n'a pas de prix inventé.
 def estimate_request_cost(model, usage):
     """Construit le relevé public de la dernière requête, ou None sans métrique.
 

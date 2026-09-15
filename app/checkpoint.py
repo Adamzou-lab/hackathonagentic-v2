@@ -10,6 +10,9 @@ from start import read_config
 TOOLS = ('search_web', 'read_page', 'save_finding')
 
 
+# Injection volontaire d'une panne dans le moteur pour le checkpoint.
+# Le modèle reste réel et peut proposer cet outil ; execute le refusera avec
+# une erreur tracée. Ce mode peut consommer du crédit, contrairement à eval.py.
 def failure_app(tool):
     if tool not in TOOLS:
         raise ValueError('Outil de test inconnu')

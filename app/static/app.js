@@ -3,6 +3,9 @@
   "use strict";
   const root = document.getElementById("lockin-mock"),
     q = (s) => root.querySelector(s);
+  // Le paramètre ?demo active explicitement les scénarios fictifs de demo.js.
+  // Sans ce paramètre, les données viennent du backend : une panne de l'API
+  // ne bascule jamais silencieusement vers de faux résultats.
   const demo = new URLSearchParams(location.search).has("demo");
   const apiBase = document.querySelector('meta[name="lockin-api-base"]')?.content || "";
   const demoApi = demo ? window.createLockinDemo() : null;
@@ -122,6 +125,8 @@
     selectedWatch = null,
     pendingRequest = null;
   let resumePending = false;
+  // Tous les textes du modèle, des pages et du journal passent par textContent.
+  // Ils restent du texte : une balise malveillante ne devient pas du HTML exécuté.
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -171,6 +176,8 @@
       return null;
     }
   }
+  // N'afficher comme liens que les URL HTTPS sans identifiants. Les protections
+  // réseau du lecteur restent côté serveur ; ce filtre protège seulement le lien UI.
   function link(label, url) {
     const safe = https(url);
     if (!safe) return el("span", "", label);
@@ -188,6 +195,8 @@
     q("#lk-error").textContent = message;
     q("#lk-error").hidden = !message;
   }
+  // Mémoriser uniquement l'identifiant de mission dans cet onglet, pas la clé
+  // Anthropic ni le jeton opérateur. Retrouver la mission lit son état existant.
   function remember(id) {
     try {
       if (id) sessionStorage.setItem("lockin-mission-id", id);
@@ -208,6 +217,8 @@
     q("#lk-work").hidden = false;
     q("#lk-nav").hidden = false;
   }
+  // Arrêter le suivi visuel et invalider les anciennes réponses asynchrones.
+  // Cela n'arrête PAS l'agent : seul l'appel serveur /stop le demande réellement.
   function pauseFollow() {
     clearTimeout(timer);
     generation++;
@@ -290,6 +301,9 @@
       q("#lk-confirmdomain").click();
     }
   };
+  // Le mode personnalisé est un choix explicite, même si les valeurs égalent
+  // celles d'un pack. La sélection radio pilote aussi l'agrandissement et la
+  // mascotte en CSS ; sélectionner un pack remet ses valeurs budget/durée.
   let customPackSelection = false;
   function updateLimits() {
     for (const id of ["budget", "duration"]) {
@@ -355,6 +369,9 @@
       updateLimits();
     }
   });
+  // Transport commun des appels au backend. Le délai de 20 s borne l'attente
+  // du navigateur, pas l'exécution de l'agent. Le jeton transmis protège Lockin ;
+  // la clé Anthropic n'est jamais nécessaire dans le navigateur.
   async function api(path, options = {}) {
     if (demo) return demoApi(path, options);
     const controller = new AbortController(),
@@ -516,6 +533,9 @@
     row.append(body);
     return row;
   }
+  // L'interface reflète le dernier état reçu du serveur : statut, compteurs,
+  // preuves et limites. Elle n'invente pas une fin de mission à partir du timer
+  // local et conserve explicitement l'indication « synthèse partielle ».
   function render(state) {
     // Polling/SSE snapshots omit the reuse receipt returned by mission creation.
     if (mission?.id === state.id && mission.reuse && !state.reuse)
@@ -539,6 +559,8 @@
     const done = terminal.has(state.status);
     const early = q("#lk-early-summary");
     const advance = Math.max(0, state.duration_seconds - state.elapsed_seconds);
+    // La durée choisie est un plafond. Si des résultats existent avant l'échéance,
+    // annoncer leur disponibilité ; aucune attente artificielle ni dépense supplémentaire.
     const showEarly = ["completed", "budget_exhausted"].includes(state.status) && state.findings.length > 0 && advance > 0;
     early.hidden = !showEarly;
     if (showEarly) {
@@ -614,6 +636,8 @@
       " appels modèle · " +
       state.network_requests_used +
       " requêtes réseau";
+    // Afficher les métriques transmises, sans confondre dépense estimée et solde.
+    // Une mesure manquante reste signalée comme partielle ; ?demo est annoncé gratuit.
     const totalCost = state.total_estimated_cost_usd;
     q("#lk-publiccost").textContent = demo ? "Démo gratuite"
       : Number.isFinite(totalCost) && state.last_request_cost
@@ -671,6 +695,9 @@
       results.classList.add("lk-arrive");
     }
     results.replaceChildren();
+    // Le plan de synthèse est un gabarit local commun à toutes les veilles.
+    // Son contenu provient uniquement des constats sauvegardés : aucun appel IA
+    // supplémentaire pour mettre en page et aucun texte factuel de remplacement.
     results.append(briefOverview(state.findings));
     results.append(el("h3", "lk-brief-heading", "02 · Les faits et leur portée"));
     for (const finding of state.findings) {
@@ -774,6 +801,9 @@
     streamController?.abort();
     streamController = null;
   }
+  // Suivi SSE d'une mission existante. « generation » écarte les réponses d'une
+  // ancienne vue ; « seq » évite les doublons du journal après reconnexion.
+  // Les fragments draft sont un affichage provisoire, jamais des preuves validées.
   async function follow(id, version) {
     if (demo) return poll(id, version);
     if (version !== generation) return;
@@ -860,7 +890,11 @@
               q("#lk-draft-text").textContent = "";
             }
             clearTimeout(refreshTimer);
+            // Regrouper les notifications proches avant de redessiner l'état complet.
+            // Le journal reçu est déjà affiché : cela évite une requête HTTP par fragment.
             refreshTimer = setTimeout(refresh, 100);
+          // Arguments et texte encore en cours de génération : zone distincte et bornée.
+          // On ne publie pas ces fragments dans la synthèse et on n'exécute pas leur JSON.
           } else if (kind === "draft") {
             q("#lk-draft").hidden = false;
             if (data.phase === "tool_input_started") {
@@ -916,6 +950,8 @@
       if (streamController === controller) streamController = null;
     }
   }
+  // Secours de suivi par lectures GET, utilisé aussi par la simulation.
+  // Il ne relance pas de mission et n'est pas un streaming des tokens du modèle.
   async function poll(id, version) {
     if (version !== generation) return;
     try {
@@ -1005,6 +1041,8 @@
       q("#lk-library-access").focus();
     }
   }
+  // « Mes veilles » charge les fiches persistées avec recherche et pagination.
+  // Consulter une fiche ne lance aucune nouvelle décision du modèle.
   async function loadLibrary(offset = 0) {
     const version = ++libraryGeneration;
     q("#lk-watch-detail").hidden = true;
@@ -1239,6 +1277,8 @@
       ...overrides,
     };
   }
+  // L'actualisation est volontaire : force_refresh demande une nouvelle mission
+  // sur la même fiche. Elle peut consommer du crédit, contrairement à sa consultation.
   async function refreshWatch(watch, button) {
     if (launching) return;
     button.disabled = true;
@@ -1346,6 +1386,9 @@
     );
     host.scrollIntoView({ block: "center", behavior: "smooth" });
   }
+  // Le verrou launching empêche les doubles clics locaux. Le serveur décide
+  // ensuite s'il réutilise une mission, suggère une veille proche ou crée une
+  // nouvelle exécution : la protection ne repose pas seulement sur le bouton.
   async function launchRequest(request) {
     if (launching) return;
     launching = true;
@@ -1399,6 +1442,9 @@
     impact.append(el("strong", "lk-brief-label", "Ce que cela implique"), el("p", "", finding.developer_impact));
     return [el("strong", "lk-brief-label", "Ce que dit la source"), el("p", "", finding.summary), impact];
   }
+  // Rendre visibles les incertitudes : couverture partielle, dates inconnues,
+  // faits anciens et source unique. Une implication est présentée comme
+  // interprétation, distincte du contenu attribué à la source.
   function briefLimits(findings, partial) {
     const section = el("section", "lk-brief-limits");
     section.append(el("h3", "lk-brief-heading", "03 · Limites et points à vérifier"));
@@ -1453,6 +1499,8 @@
       q("#lk-api-status").textContent = "Impossible de vérifier si les recherches sont disponibles. Vérifiez votre connexion.";
     }
   }
+  // Demander le changement global au serveur, puis relire son état réel.
+  // En cas d'erreur réseau, ne pas prétendre que l'API a été activée/désactivée.
   q("#lk-api-toggle").onclick = async () => {
     if (changingApi || typeof apiEnabled !== "boolean") return;
     changingApi = true;
@@ -1492,6 +1540,8 @@
     openLibrary(pendingLibraryWatch);
   };
   q("#lk-form").onsubmit = (e) => e.preventDefault();
+  // Validation du formulaire pour guider l'utilisateur, puis envoi des limites.
+  // Ces contrôles de confort ne remplacent pas MissionInput et Engine côté serveur.
   q(".lk-submit").onclick = async () => {
     if (launching || !q("#lk-form").reportValidity()) return;
     token = q("#lk-access").value.trim() || token;
@@ -1527,6 +1577,8 @@
         : {}),
     });
   };
+  // Demander l'arrêt à l'API, puis suivre sa confirmation dans le journal.
+  // Un clic ou une coupure du flux ne suffisent pas à affirmer que l'agent est arrêté.
   q("#lk-stop").onclick = async () => {
     if (!mission || terminal.has(mission.status)) return;
     q("#lk-stop").disabled = true;
